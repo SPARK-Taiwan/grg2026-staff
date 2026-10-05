@@ -141,3 +141,8 @@ window.ROLES = judges.concat([
     watch: ["受傷的小朋友不能落單", "不要自行送醫，先打給大會主辦", "午休時輪流看守計分台"],
   },
 ]);
+
+// 網頁上的顯示順序（「由主辦單位安排」固定在最前面）：
+// 機動＋危機處理 1、2 → 1F 打卡 → 2F 攝影 → 2F 門口 → 計分＋主持 → 相撲裁判
+window.ORDER = [19, 20, 17, 16, 18, 15, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+window.ROLES.sort((a, b) => window.ORDER.indexOf(a.id) - window.ORDER.indexOf(b.id));

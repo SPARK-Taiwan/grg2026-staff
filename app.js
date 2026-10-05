@@ -80,7 +80,7 @@
 
   // 一列的操作區：可認領 → 暱稱＋電話＋確認；已認領 → 名字＋取消
   function actionHTML(key, takenBy) {
-    if (FIXED[key]) return '<div class="act taken-act"><span class="who">✔ ' + esc(FIXED[key]) + '</span><span class="fixed-tag">主辦指定</span></div>';
+    if (FIXED[key]) return '<div class="act"><span class="who">✔ ' + esc(FIXED[key]) + '</span></div>';
     const u = ui[key] || {}, locked = !state.open, dis = locked ? " disabled" : "";
     const msg = u.msg ? '<p class="row-msg ' + (u.ok ? "ok" : "err") + '">' + esc(u.msg) + "</p>" : "";
     if (takenBy && !u.cancel) {
