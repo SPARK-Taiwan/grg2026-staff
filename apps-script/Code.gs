@@ -9,7 +9,7 @@
  *   紀錄      每一次送出的結果（含電話錯誤）
  *
  * 第一次使用：在 Apps Script 編輯器選 setup 執行一次，再部署成網頁應用程式。
- * 更新程式後：先執行一次 setup（更新崗位名稱、寫入主辦指定），再到 部署 → 管理部署作業 → 編輯 → 版本選「新版本」→ 部署（網址不變）。
+ * 更新程式後：先執行一次 setup（更新崗位名稱與編號、寫入主辦指定），再到 部署 → 管理部署作業 → 編輯 → 版本選「新版本」→ 部署（網址不變）。
  */
 
 var OPEN_AT = new Date('2026-10-09T00:00:00+08:00'); // 開放填寫時間
@@ -20,15 +20,16 @@ var ARRANGE = 'A';                                     // 「由主辦單位安�
 var ARRANGE_NAME = '由主辦單位安排';
 
 var ROLE_NAMES = {
-  1: '相撲裁判 A1・左', 2: '相撲裁判 A1・右', 3: '相撲裁判 A2・左', 4: '相撲裁判 A2・右',
-  5: '相撲裁判 A3・左', 6: '相撲裁判 A3・右', 7: '相撲裁判 B1・左', 8: '相撲裁判 B1・右',
-  9: '相撲裁判 B2・左', 10: '相撲裁判 B2・右', 11: '相撲裁判 B3・左', 12: '相撲裁判 B3・右',
-  13: '相撲裁判 B4・左', 14: '相撲裁判 B4・右', 15: '計分＋主持', 16: '2F 攝影',
-  17: '1F 打卡＋便當', 18: '2F 門口把關', 19: '機動＋危機處理1', 20: '機動＋危機處理2'
+  1: '機動＋危機處理1', 2: '機動＋危機處理2', 3: '1F 打卡＋便當', 4: '2F 攝影',
+  5: '2F 門口把關', 6: '計分＋主持',
+  7: '相撲裁判 A1・左', 8: '相撲裁判 A1・右', 9: '相撲裁判 A2・左', 10: '相撲裁判 A2・右',
+  11: '相撲裁判 A3・左', 12: '相撲裁判 A3・右', 13: '相撲裁判 B1・左', 14: '相撲裁判 B1・右',
+  15: '相撲裁判 B2・左', 16: '相撲裁判 B2・右', 17: '相撲裁判 B3・左', 18: '相撲裁判 B3・右',
+  19: '相撲裁判 B4・左', 20: '相撲裁判 B4・右'
 };
 
 // 主辦單位直接指定的崗位：網站上不能被認領或取消，這些人也不能自己改選
-var FIXED = { 1: '彰師_余紹銨', 2: '中央_林星佑', 19: '台科_Winnie', 20: '北市_小鹿' };
+var FIXED = { 1: '台科_Winnie', 2: '北市_小鹿', 7: '彰師_余紹銨', 8: '中央_林星佑' };
 
 function fixedNick_(nick) {
   for (var id in FIXED) if (FIXED[id] === nick) return id;
@@ -221,11 +222,21 @@ function setup() {
   }
   ensure('名單', ['暱稱', '電話']);
   var claim = ensure('認領', ['編號', '崗位', '暱稱', '認領時間']);
-  if (claim.getLastRow() < 21) {
-    var rows = [];
-    for (var i = 1; i <= 20; i++) rows.push([i, ROLE_NAMES[i], '', '']);
-    claim.getRange(2, 1, 20, 4).setValues(rows);
+  // 依「崗位名稱」把現有的認領搬到目前的編號（編號順序改過也不會對錯人）
+  var byName = {};
+  if (claim.getLastRow() >= 2) {
+    claim.getRange(2, 1, claim.getLastRow() - 1, 4).getValues().forEach(function (r) {
+      var name = String(r[1]).replace('（主辦指定）', '').trim();
+      if (name && r[2]) byName[name] = [r[2], r[3]];
+    });
+    claim.getRange(2, 1, claim.getLastRow() - 1, 4).clearContent();
   }
+  var rows = [];
+  for (var i = 1; i <= 20; i++) {
+    var keep = byName[ROLE_NAMES[i]] || ['', ''];
+    rows.push([i, ROLE_NAMES[i], FIXED[i] || keep[0], FIXED[i] ? (keep[0] === FIXED[i] ? keep[1] : new Date()) : keep[1]]);
+  }
+  claim.getRange(2, 1, 20, 4).setValues(rows);
   ensure('主辦安排', ['暱稱', '時間']);
   ensure('填寫狀態', ['暱稱', '選擇', '狀態']);
   ensure('紀錄', ['時間', '動作', '暱稱', '崗位', '結果', '訊息']);
