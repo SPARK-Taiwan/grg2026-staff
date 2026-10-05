@@ -1,13 +1,15 @@
 (function () {
   const $ = (id) => document.getElementById(id);
   const ROLES = window.ROLES, EV = window.EVENT;
+  const ARRANGE = "A", ARRANGE_NAME = "由主辦單位安排";
   const GROUP_COLOR = { "裁判組": "var(--g-race)", "門禁接待組": "var(--g-gate)", "場控紀錄組": "var(--g-score)", "後勤安全組": "var(--g-care)" };
-  const roleName = (id) => { const r = ROLES.find((x) => x.id === Number(id)); return r ? r.title : ""; };
+  const roleName = (id) => { if (String(id) === ARRANGE) return ARRANGE_NAME; const r = ROLES.find((x) => x.id === Number(id)); return r ? r.title : ""; };
   const pad = (n) => String(n).padStart(2, "0");
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
   let state = { open: false, openAt: EV.openAt, offset: 0, nicknames: [], claims: {}, arrange: [] };
-  const ARRANGE = "A", ARRANGE_NAME = "由主辦單位安排";
   let filter = "全部";
+  const ui = {}; // 每一列的輸入狀態：{ nick, phone, cancel, msg, ok }，重新整理時保留
 
   // ---------- 後台：正式（Apps Script）或示範模式 ----------
   const demo = !window.API_URL;
@@ -18,9 +20,7 @@
   const norm = (p) => { let d = String(p || "").replace(/\D/g, ""); if (d.startsWith("886")) d = "0" + d.slice(3); return d; };
 
   async function apiStatus() {
-    if (demo) {
-      return { open: demoOpen() || Date.now() >= new Date(EV.openAt).getTime(), openAt: EV.openAt, now: new Date().toISOString(), nicknames: Object.keys(DEMO_STAFF), ...demoLoad() };
-    }
+    if (demo) return { open: demoOpen() || Date.now() >= new Date(EV.openAt).getTime(), openAt: EV.openAt, now: new Date().toISOString(), nicknames: Object.keys(DEMO_STAFF), ...demoLoad() };
     const res = await fetch(window.API_URL, { cache: "no-store" });
     return res.json();
   }
@@ -55,49 +55,88 @@
     $("demoNote").hidden = !demo;
     const groups = ["全部"].concat([...new Set(ROLES.map((r) => r.group))]);
     $("chips").innerHTML = groups.map((g) => '<button type="button" class="chip' + (g === filter ? " on" : "") + '" data-g="' + g + '">' + g + "</button>").join("");
-    $("chips").onclick = (e) => { const g = e.target.dataset.g; if (!g) return; filter = g; renderStatic(); renderDynamic(); };
   }
 
   const list = (arr) => (arr && arr.length ? "<ul>" + arr.map((t) => "<li>" + t + "</li>").join("") + "</ul>" : "<p class='load'>無</p>");
 
+  // 誰目前在哪裡：暱稱 → 崗位名稱
+  function whereIs() {
+    const m = {};
+    for (const id in state.claims) m[state.claims[id]] = "#" + pad(id);
+    (state.arrange || []).forEach((n) => (m[n] = "主辦安排"));
+    return m;
+  }
+
+  function nickOptions(key, onlyFrom) {
+    const where = whereIs();
+    const names = onlyFrom || state.nicknames;
+    return '<option value="">選你的暱稱</option>' + names.map((n) =>
+      '<option value="' + esc(n) + '"' + (ui[key] && ui[key].nick === n ? " selected" : "") + ">" + esc(n) + (where[n] && !onlyFrom ? "（目前：" + where[n] + "）" : "") + "</option>").join("");
+  }
+
+  // 一列的操作區：可認領 → 暱稱＋電話＋確認；已認領 → 名字＋取消
+  function actionHTML(key, takenBy) {
+    const u = ui[key] || {}, locked = !state.open, dis = locked ? " disabled" : "";
+    const msg = u.msg ? '<p class="row-msg ' + (u.ok ? "ok" : "err") + '">' + esc(u.msg) + "</p>" : "";
+    if (takenBy && !u.cancel) {
+      return '<div class="act taken-act"><span class="who">✔ ' + esc(takenBy) + " 已認領</span>" +
+        '<button type="button" class="ghost small" data-act="askcancel" data-key="' + key + '"' + dis + ">我要取消</button></div>" + msg;
+    }
+    const isCancel = !!u.cancel;
+    const nickSel = isCancel
+      ? '<select data-f="nick" data-key="' + key + '"' + dis + ">" + nickOptions(key, key === ARRANGE ? state.arrange : [takenBy]) + "</select>"
+      : '<select data-f="nick" data-key="' + key + '"' + dis + ">" + nickOptions(key) + "</select>";
+    return '<div class="act">' + nickSel +
+      '<input data-f="phone" data-key="' + key + '" type="tel" inputmode="numeric" autocomplete="tel" placeholder="手機號碼" value="' + esc(u.phone || "") + '"' + dis + ">" +
+      '<button type="button" data-act="' + (isCancel ? "cancel" : "claim") + '" data-key="' + key + '"' + dis + ">" + (isCancel ? "確認取消" : "確認") + "</button>" +
+      (isCancel ? '<button type="button" class="ghost small" data-act="back" data-key="' + key + '">返回</button>' : "") +
+      "</div>" + (locked ? '<p class="row-hint">10/9 00:00 開放</p>' : "") + msg;
+  }
+
+  function arrangeRow() {
+    const a = state.arrange || [], u = ui[ARRANGE] || {};
+    return '<div class="row arrange"><div class="row-head">' +
+      '<span class="num star">★</span><div class="row-title"><span class="title">' + ARRANGE_NAME + '</span>' +
+      '<span class="short">不確定選哪個崗位？選這裡，由大會依需要分配（可多人）</span></div>' +
+      '<span class="badge free">' + a.length + " 人</span></div>" +
+      (a.length ? '<p class="names">' + a.map(esc).join("、") + "</p>" : "") +
+      actionHTML(ARRANGE, null) +
+      (a.length && !u.cancel ? '<button type="button" class="link" data-act="askcancel" data-key="' + ARRANGE + '"' + (state.open ? "" : " disabled") + ">取消我的「由主辦單位安排」</button>" : "") +
+      "</div>";
+  }
+
+  function roleRow(r) {
+    const key = String(r.id), who = state.claims[key];
+    return '<div class="row' + (who ? " is-taken" : "") + '"><div class="row-head">' +
+      '<span class="num" style="background:' + GROUP_COLOR[r.group] + '">' + pad(r.id) + "</span>" +
+      '<div class="row-title"><span class="title">' + r.title + '</span><span class="short">' + r.short + "</span></div>" +
+      '<span class="badge ' + (who ? "taken" : "free") + '">' + (who ? "已認領" : "可認領") + "</span></div>" +
+      actionHTML(key, who) +
+      '<details><summary>看詳細</summary><div class="body">' +
+      '<p class="load">' + r.group + "｜" + r.load + "</p>" +
+      '<div class="two"><div class="box"><h4>上午</h4>' + list(r.am) + '</div><div class="box"><h4>下午</h4>' + list(r.pm) + "</div></div>" +
+      '<div class="two"><div><h4>要帶</h4>' + list(r.bring) + "</div><div><h4>適合誰</h4>" + list(r.need) + "</div></div>" +
+      "<div><h4>重點注意</h4>" + list(r.watch) + "</div></div></details></div>";
+  }
+
   function renderDynamic() {
-    const claims = state.claims || {};
-    const arrange = state.arrange || [];
+    const claims = state.claims || {}, arrange = state.arrange || [];
     const taken = Object.keys(claims).length;
     $("countText").textContent = "已認領 " + taken + " / " + ROLES.length + "・主辦安排 " + arrange.length + " 人" + (state.nicknames.length ? "・已填 " + (taken + arrange.length) + " / " + state.nicknames.length + " 人" : "");
-    $("cards").innerHTML = ROLES.filter((r) => filter === "全部" || r.group === filter).map((r) => {
-      const who = claims[String(r.id)];
-      return '<details class="card"><summary>' +
-        '<span class="num" style="background:' + GROUP_COLOR[r.group] + '">' + pad(r.id) + "</span>" +
-        '<span class="title">' + r.title + "</span>" +
-        '<span class="badge ' + (who ? "taken" : "free") + '">' + (who ? who + " 已認領" : "可認領") + "</span>" +
-        '<span class="short">' + r.short + "</span></summary>" +
-        '<div class="body">' +
-        '<p class="load">' + r.group + "｜" + r.load + "</p>" +
-        '<div class="two"><div class="box"><h4>上午</h4>' + list(r.am) + '</div><div class="box"><h4>下午</h4>' + list(r.pm) + "</div></div>" +
-        '<div class="two"><div><h4>要帶</h4>' + list(r.bring) + "</div><div><h4>適合誰</h4>" + list(r.need) + "</div></div>" +
-        "<div><h4>重點注意</h4>" + list(r.watch) + "</div></div></details>";
-    }).join("");
+    $("lockbox").hidden = state.open;
 
-    $("statusBody").innerHTML = ROLES.map((r) => {
-      const who = claims[String(r.id)];
-      return "<tr><td>" + pad(r.id) + "</td><td>" + r.title + "</td><td" + (who ? "" : ' class="empty"') + ">" + (who || "尚無") + "</td></tr>";
-    }).join("") + '<tr><td>—</td><td>' + ARRANGE_NAME + '</td><td' + (arrange.length ? "" : ' class="empty"') + ">" + (arrange.length ? arrange.join("、") : "尚無") + "</td></tr>";
+    // 保留展開中的「看詳細」與游標位置
+    const openDetails = new Set([...document.querySelectorAll("#rows details[open]")].map((d) => d.dataset.key));
+    const active = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset : null;
+    const activeKey = active && active.key, activeF = active && active.f;
 
-    const nickSel = $("nick"), keepNick = nickSel.value;
-    nickSel.innerHTML = '<option value="">請選擇</option>' + state.nicknames.map((n) => "<option>" + n + "</option>").join("");
-    nickSel.value = keepNick;
-    const roleSel = $("role"), keepRole = roleSel.value;
-    roleSel.innerHTML = '<option value="">請選擇</option>' + ROLES.map((r) => {
-      const who = claims[String(r.id)], mine = who && who === nickSel.value;
-      return '<option value="' + r.id + '"' + (who && !mine ? " disabled" : "") + ">#" + pad(r.id) + " " + r.title + (who ? (mine ? "（你目前的崗位）" : "（" + who + " 已認領）") : "") + "</option>";
-    }).join("") + '<option value="' + ARRANGE + '">' + ARRANGE_NAME + "（可多人" + (arrange.includes(nickSel.value) ? "，你目前的選擇" : "") + "）</option>";
-    roleSel.value = keepRole;
-
-    const locked = !state.open;
-    $("lockbox").hidden = !locked;
-    $("form").classList.toggle("locked", locked);
-    ["nick", "phone", "role", "submitBtn", "cancelBtn"].forEach((id) => ($(id).disabled = locked));
+    $("rows").innerHTML = arrangeRow() + ROLES.filter((r) => filter === "全部" || r.group === filter).map(roleRow).join("");
+    document.querySelectorAll("#rows details").forEach((d) => {
+      const key = d.closest(".row").querySelector("[data-key]");
+      d.dataset.key = key ? key.dataset.key : "";
+      if (openDetails.has(d.dataset.key)) d.open = true;
+    });
+    if (activeKey && activeF) { const el = document.querySelector('#rows [data-key="' + activeKey + '"][data-f="' + activeF + '"]'); if (el) el.focus(); }
   }
 
   function tick() {
@@ -111,38 +150,50 @@
   async function refresh() {
     try {
       const st = await apiStatus();
-      state = { ...state, ...st, offset: new Date(st.now).getTime() - Date.now() };
+      state = { ...state, ...st, arrange: st.arrange || [], offset: new Date(st.now).getTime() - Date.now() };
       renderDynamic(); tick();
     } catch (e) {
-      $("msg").className = "msg err"; $("msg").textContent = "讀取失敗，請稍後重新整理";
+      $("countText").textContent = "讀取失敗，請稍後重新整理";
     }
   }
 
-  async function send(action) {
-    const msg = $("msg");
-    const req = { action, nickname: $("nick").value, phone: $("phone").value, roleId: $("role").value };
-    if (!req.nickname || !req.phone || (action === "claim" && !req.roleId)) { msg.className = "msg err"; msg.textContent = "請完成上面三個欄位"; return; }
-    if (action === "cancel" && !confirm("確定要取消你目前認領的崗位嗎？")) return;
-    $("submitBtn").disabled = $("cancelBtn").disabled = true;
-    msg.className = "msg"; msg.textContent = "送出中…";
+  async function send(action, key) {
+    const u = (ui[key] = ui[key] || {});
+    const req = { action, nickname: u.nick || "", phone: u.phone || "", roleId: key };
+    if (!req.nickname || !req.phone) { u.msg = "請選暱稱並輸入手機號碼"; u.ok = false; renderDynamic(); return; }
+    u.msg = "送出中…"; u.ok = true; renderDynamic();
     try {
       const r = await apiPost(req);
-      msg.className = "msg " + (r.ok ? "ok" : "err"); msg.textContent = r.message;
       if (r.claims) state.claims = r.claims;
       if (r.arrange) state.arrange = r.arrange;
-      renderDynamic();
+      for (const k in ui) if (k !== key) ui[k].msg = "";
+      ui[key] = r.ok ? { msg: r.message, ok: true } : { ...u, msg: r.message, ok: false };
     } catch (e) {
-      msg.className = "msg err"; msg.textContent = "送出失敗，請檢查網路後再試一次";
-    } finally {
-      $("submitBtn").disabled = $("cancelBtn").disabled = !state.open;
+      u.msg = "送出失敗，請檢查網路後再試一次"; u.ok = false;
     }
+    renderDynamic();
   }
 
-  $("form").onsubmit = (e) => { e.preventDefault(); send("claim"); };
-  $("cancelBtn").onclick = () => send("cancel");
-  $("nick").onchange = renderDynamic;
+  // ---------- 事件 ----------
+  $("chips").onclick = (e) => { const g = e.target.dataset.g; if (!g) return; filter = g; renderStatic(); renderDynamic(); };
+  $("rows").addEventListener("input", (e) => {
+    const t = e.target, key = t.dataset.key, f = t.dataset.f;
+    if (!key || !f) return;
+    (ui[key] = ui[key] || {})[f] = t.value;
+  });
+  $("rows").addEventListener("change", (e) => {
+    const t = e.target; if (t.dataset.key && t.dataset.f) (ui[t.dataset.key] = ui[t.dataset.key] || {})[t.dataset.f] = t.value;
+  });
+  $("rows").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-act]"); if (!b || b.disabled) return;
+    const key = b.dataset.key, act = b.dataset.act;
+    if (act === "claim") send("claim", key);
+    else if (act === "cancel") { if (confirm("確定要取消嗎？")) send("cancel", key); }
+    else if (act === "askcancel") { ui[key] = { cancel: true, nick: key === ARRANGE ? "" : state.claims[key] }; renderDynamic(); }
+    else if (act === "back") { ui[key] = {}; renderDynamic(); }
+  });
 
   renderStatic(); refresh();
   setInterval(tick, 1000);
-  setInterval(refresh, 30000);
+  setInterval(() => { const a = document.activeElement; if (!(a && a.closest && a.closest("#rows") && (a.tagName === "INPUT" || a.tagName === "SELECT"))) refresh(); }, 30000);
 })();

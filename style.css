@@ -76,3 +76,41 @@ footer { padding: 28px 0 40px; color: var(--mute); font-size: 14px; }
   details.card summary { grid-template-columns: auto 1fr; }
   .badge { grid-row: auto; grid-column: 2; justify-self: start; }
 }
+
+/* ---------- 崗位認領列表 ---------- */
+.rule { margin: 0 0 12px; }
+.rows { display: grid; gap: 10px; }
+.row { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: #fff; display: grid; gap: 10px; }
+.row.arrange { background: #fff8e6; border-color: #f1d58a; }
+.row.is-taken { background: #fafbfc; }
+.row-head { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; }
+.row-title { display: grid; }
+.num.star { background: var(--yellow); color: var(--navy); font-size: 18px; grid-row: auto; }
+.row-head .num, .row-head .badge { grid-row: auto; }
+.names { margin: 0; font-size: 14.5px; }
+.act { display: grid; grid-template-columns: 1.3fr 1fr auto; gap: 8px; align-items: center; }
+.act select, .act input { padding: 9px 10px; }
+.taken-act { grid-template-columns: 1fr auto; }
+.who { font-weight: 700; color: #13775f; }
+button.small { padding: 8px 14px; font-size: 14px; }
+button.link { background: none; color: var(--mute); padding: 0; font-weight: 400; font-size: 13.5px; text-decoration: underline; justify-self: start; }
+.row-hint { margin: -4px 0 0; font-size: 13px; color: #8a6200; }
+.row-msg { margin: -2px 0 0; font-weight: 700; font-size: 14.5px; }
+.row-msg.ok { color: #13775f; } .row-msg.err { color: #b42a22; }
+.row details summary { cursor: pointer; color: var(--g-score); font-size: 14px; }
+.row details .body { padding: 10px 0 0; }
+@media (max-width: 560px) {
+  .act { grid-template-columns: 1fr; }
+  .act button { width: 100%; }
+  .taken-act { grid-template-columns: 1fr auto; }
+  .taken-act button { width: auto; }
+}
+.row-title .short { grid-column: auto; }
+.sec-head { flex-wrap: wrap; }
+.sec-head h2 { white-space: nowrap; }
+@media (max-width: 560px) {
+  .row-head .badge { grid-column: auto; justify-self: end; }
+  .act { grid-template-columns: 1fr auto; }
+  .act select { grid-column: 1 / -1; }
+  .act button { width: auto; }
+}
