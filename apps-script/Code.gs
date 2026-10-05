@@ -9,7 +9,7 @@
  *   紀錄      每一次送出的結果（含電話錯誤）
  *
  * 第一次使用：在 Apps Script 編輯器選 setup 執行一次，再部署成網頁應用程式。
- * 更新程式後：部署 → 管理部署作業 → 編輯 → 版本選「新版本」→ 部署（網址不變）。
+ * 更新程式後：先執行一次 setup（更新崗位名稱、寫入主辦指定），再到 部署 → 管理部署作業 → 編輯 → 版本選「新版本」→ 部署（網址不變）。
  */
 
 var OPEN_AT = new Date('2026-10-09T00:00:00+08:00'); // 開放填寫時間
@@ -20,12 +20,20 @@ var ARRANGE = 'A';                                     // 「由主辦單位安�
 var ARRANGE_NAME = '由主辦單位安排';
 
 var ROLE_NAMES = {
-  1: '裁判 A1・左', 2: '裁判 A1・右', 3: '裁判 A2・左', 4: '裁判 A2・右',
-  5: '裁判 A3・左', 6: '裁判 A3・右', 7: '裁判 B1・左', 8: '裁判 B1・右',
-  9: '裁判 B2・左', 10: '裁判 B2・右', 11: '裁判 B3・左', 12: '裁判 B3・右',
-  13: '裁判 B4・左', 14: '裁判 B4・右', 15: '計分＋主持', 16: '2F 攝影',
-  17: '1F 打卡＋便當', 18: '2F 門口把關', 19: '機動＋危機處理', 20: '機動＋門口支援'
+  1: '相撲裁判 A1・左', 2: '相撲裁判 A1・右', 3: '相撲裁判 A2・左', 4: '相撲裁判 A2・右',
+  5: '相撲裁判 A3・左', 6: '相撲裁判 A3・右', 7: '相撲裁判 B1・左', 8: '相撲裁判 B1・右',
+  9: '相撲裁判 B2・左', 10: '相撲裁判 B2・右', 11: '相撲裁判 B3・左', 12: '相撲裁判 B3・右',
+  13: '相撲裁判 B4・左', 14: '相撲裁判 B4・右', 15: '計分＋主持', 16: '2F 攝影',
+  17: '1F 打卡＋便當', 18: '2F 門口把關', 19: '機動＋危機處理1', 20: '機動＋危機處理2'
 };
+
+// 主辦單位直接指定的崗位：網站上不能被認領或取消，這些人也不能自己改選
+var FIXED = { 1: '彰師_余紹銨', 2: '中央_林星佑', 19: '台科_Winnie', 20: '北市_小鹿' };
+
+function fixedNick_(nick) {
+  for (var id in FIXED) if (FIXED[id] === nick) return id;
+  return null;
+}
 
 // ---------- 純邏輯（不碰試算表，方便測試） ----------
 
@@ -54,8 +62,12 @@ function decide_(req, state, now) {
   var phone = normalizePhone_(req.phone);
   if (!phone || phone !== normalizePhone_(state.staff[nick])) return { ok: false, badPhone: true, message: '電話號碼不符' };
 
+  if (fixedNick_(nick)) return { ok: false, message: '你的崗位已由主辦單位指定（' + ROLE_NAMES[fixedNick_(nick)] + '），如需更改請聯絡大會' };
+  if (req.action === 'claim' && FIXED[String(parseInt(req.roleId, 10))]) return { ok: false, message: '這個崗位已由主辦單位指定' };
+
   var claims = {};
   for (var k in state.claims) claims[k] = state.claims[k];
+  for (var f in FIXED) claims[f] = FIXED[f];
   var arrange = (state.arrange || []).slice();
   var mine = null;
   for (var r in claims) if (claims[r] === nick) mine = r;
@@ -113,6 +125,7 @@ function readClaims_() {
   var rows = sheet_('認領').getRange(2, 1, 20, 3).getValues();
   var claims = {};
   rows.forEach(function (r) { if (r[2]) claims[String(r[0])] = String(r[2]); });
+  for (var id in FIXED) claims[id] = FIXED[id];
   return claims;
 }
 
@@ -130,7 +143,7 @@ function writeClaims_(claims, changedRole) {
     var id = String(r[0]);
     var nick = claims[id] || '';
     var time = nick ? (nick === r[2] && id !== changedRole ? r[3] : now) : '';
-    return [r[0], r[1], nick, time];
+    return [r[0], ROLE_NAMES[id] + (FIXED[id] ? '（主辦指定）' : ''), nick, time || (FIXED[id] ? now : '')];
   });
   sh.getRange(2, 1, 20, 4).setValues(out);
 }
@@ -168,7 +181,7 @@ function json_(obj) {
 function doGet() {
   var now = new Date();
   var s = readStaff_();
-  return json_({ open: isOpen_(now), openAt: OPEN_AT.toISOString(), now: now.toISOString(), nicknames: s.order, claims: readClaims_(), arrange: readArrange_() });
+  return json_({ open: isOpen_(now), openAt: OPEN_AT.toISOString(), now: now.toISOString(), nicknames: s.order, claims: readClaims_(), arrange: readArrange_(), fixed: FIXED });
 }
 
 function doPost(e) {
@@ -216,5 +229,7 @@ function setup() {
   ensure('主辦安排', ['暱稱', '時間']);
   ensure('填寫狀態', ['暱稱', '選擇', '狀態']);
   ensure('紀錄', ['時間', '動作', '暱稱', '崗位', '結果', '訊息']);
-  writeStatus_(readStaff_().order, readClaims_(), readArrange_());
+  var claims = readClaims_();
+  writeClaims_(claims, null);           // 更新崗位名稱、寫入主辦指定
+  writeStatus_(readStaff_().order, claims, readArrange_());
 }

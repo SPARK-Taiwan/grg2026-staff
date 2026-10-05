@@ -2,6 +2,9 @@
   const $ = (id) => document.getElementById(id);
   const ROLES = window.ROLES, EV = window.EVENT;
   const ARRANGE = "A", ARRANGE_NAME = "由主辦單位安排";
+  const FIXED = window.FIXED || {};
+  const FIXED_NAMES = new Set(Object.values(FIXED));
+  const withFixed = (c) => ({ ...(c || {}), ...FIXED });
   const GROUP_COLOR = { "裁判組": "var(--g-race)", "門禁接待組": "var(--g-gate)", "場控紀錄組": "var(--g-score)", "後勤安全組": "var(--g-care)" };
   const roleName = (id) => { if (String(id) === ARRANGE) return ARRANGE_NAME; const r = ROLES.find((x) => x.id === Number(id)); return r ? r.title : ""; };
   const pad = (n) => String(n).padStart(2, "0");
@@ -29,6 +32,7 @@
       if (!state.open) return { ok: false, message: "尚未開放填寫（10/9 00:00 開放）" };
       const d = demoLoad(), c = d.claims, a = d.arrange;
       if (norm(DEMO_STAFF[req.nickname]) !== norm(req.phone)) return { ok: false, message: "電話號碼不符", ...d };
+      if (FIXED[String(req.roleId)]) return { ok: false, message: "這個崗位已由主辦單位指定", ...d };
       const mine = Object.keys(c).find((k) => c[k] === req.nickname), inA = a.includes(req.nickname);
       const cur = mine ? roleName(mine) : inA ? ARRANGE_NAME : null;
       const release = () => { if (mine) delete c[mine]; if (inA) a.splice(a.indexOf(req.nickname), 1); };
@@ -69,13 +73,14 @@
 
   function nickOptions(key, onlyFrom) {
     const where = whereIs();
-    const names = onlyFrom || state.nicknames;
+    const names = onlyFrom || state.nicknames.filter((n) => !FIXED_NAMES.has(n));
     return '<option value="">選你的暱稱</option>' + names.map((n) =>
       '<option value="' + esc(n) + '"' + (ui[key] && ui[key].nick === n ? " selected" : "") + ">" + esc(n) + (where[n] && !onlyFrom ? "（目前：" + where[n] + "）" : "") + "</option>").join("");
   }
 
   // 一列的操作區：可認領 → 暱稱＋電話＋確認；已認領 → 名字＋取消
   function actionHTML(key, takenBy) {
+    if (FIXED[key]) return '<div class="act taken-act"><span class="who">✔ ' + esc(FIXED[key]) + '</span><span class="fixed-tag">主辦指定</span></div>';
     const u = ui[key] || {}, locked = !state.open, dis = locked ? " disabled" : "";
     const msg = u.msg ? '<p class="row-msg ' + (u.ok ? "ok" : "err") + '">' + esc(u.msg) + "</p>" : "";
     if (takenBy && !u.cancel) {
@@ -110,7 +115,7 @@
     return '<div class="row' + (who ? " is-taken" : "") + '"><div class="row-head">' +
       '<span class="num" style="background:' + GROUP_COLOR[r.group] + '">' + pad(r.id) + "</span>" +
       '<div class="row-title"><span class="title">' + r.title + '</span><span class="short">' + r.short + "</span></div>" +
-      '<span class="badge ' + (who ? "taken" : "free") + '">' + (who ? "已認領" : "可認領") + "</span></div>" +
+      '<span class="badge ' + (who ? "taken" : "free") + '">' + (FIXED[key] ? "主辦指定" : who ? "已認領" : "可認領") + "</span></div>" +
       actionHTML(key, who) +
       '<details><summary>看詳細</summary><div class="body">' +
       '<p class="load">' + r.group + "｜" + r.load + "</p>" +
@@ -150,7 +155,7 @@
   async function refresh() {
     try {
       const st = await apiStatus();
-      state = { ...state, ...st, arrange: st.arrange || [], offset: new Date(st.now).getTime() - Date.now() };
+      state = { ...state, ...st, claims: withFixed(st.claims), arrange: st.arrange || [], offset: new Date(st.now).getTime() - Date.now() };
       renderDynamic(); tick();
     } catch (e) {
       $("countText").textContent = "讀取失敗，請稍後重新整理";
@@ -164,7 +169,7 @@
     u.msg = "送出中…"; u.ok = true; renderDynamic();
     try {
       const r = await apiPost(req);
-      if (r.claims) state.claims = r.claims;
+      if (r.claims) state.claims = withFixed(r.claims);
       if (r.arrange) state.arrange = r.arrange;
       for (const k in ui) if (k !== key) ui[k].msg = "";
       ui[key] = r.ok ? { msg: r.message, ok: true } : { ...u, msg: r.message, ok: false };
