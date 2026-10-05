@@ -5,7 +5,7 @@ window.EVENT = {
   date: "2026/10/25（日）",
   place: "桃園市桃園區成功國小 活動中心 2F",
   openAt: "2026-10-09T00:00:00+08:00",
-  pdf: "GRG2026賽事籌備會議_v14.pdf",
+  pdf: "GRG2026賽事籌備會議_v15.pdf",
   contact: "大會主辦 0911-955-212（陳大雄）",
   photoUrl: "https://drive.google.com/drive/folders/13PCTS0EWF9aBDtN9M0LKJgMJkpuzA_nT?usp=drive_link",
 };
