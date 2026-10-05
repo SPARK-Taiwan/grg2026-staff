@@ -28,7 +28,6 @@ window.COMMON = [
 
 const JUDGE_BASE = {
   group: "裁判組",
-  load: "全天站立、走動",
   bring: ["手機（用網站填寫對戰成績，請充飽電）", "筆"],
   need: ["要參加裁判培訓（群組內線上會議）", "熟讀相撲賽規則 v4"],
   watch: [

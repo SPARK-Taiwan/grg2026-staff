@@ -92,7 +92,7 @@
       ? '<select data-f="nick" data-key="' + key + '"' + dis + ">" + nickOptions(key, key === ARRANGE ? state.arrange : [takenBy]) + "</select>"
       : '<select data-f="nick" data-key="' + key + '"' + dis + ">" + nickOptions(key) + "</select>";
     return '<div class="act">' + nickSel +
-      '<input data-f="phone" data-key="' + key + '" type="tel" inputmode="numeric" autocomplete="tel" placeholder="手機號碼" value="' + esc(u.phone || "") + '"' + dis + ">" +
+      '<input data-f="phone" data-key="' + key + '" type="tel" inputmode="numeric" autocomplete="tel" placeholder="請填寫手機號碼做本人確認" value="' + esc(u.phone || "") + '"' + dis + ">" +
       '<button type="button" data-act="' + (isCancel ? "cancel" : "claim") + '" data-key="' + key + '"' + dis + ">" + (isCancel ? "確認取消" : "確認") + "</button>" +
       (isCancel ? '<button type="button" class="ghost small" data-act="back" data-key="' + key + '">返回</button>' : "") +
       "</div>" + (locked ? '<p class="row-hint">10/9 00:00 開放</p>' : "") + msg;
@@ -118,7 +118,7 @@
       '<span class="badge ' + (who ? "taken" : "free") + '">' + (FIXED[key] ? "主辦指定" : who ? "已認領" : "可認領") + "</span></div>" +
       actionHTML(key, who) +
       '<details><summary>看詳細</summary><div class="body">' +
-      '<p class="load">' + r.group + "｜" + r.load + "</p>" +
+      '<p class="load">' + r.group + (r.load ? "｜" + r.load : "") + "</p>" +
       '<div class="two"><div class="box"><h4>上午</h4>' + list(r.am) + '</div><div class="box"><h4>下午</h4>' + list(r.pm) + "</div></div>" +
       '<div class="two"><div><h4>要帶</h4>' + list(r.bring) + "</div><div><h4>適合誰</h4>" + list(r.need) + "</div></div>" +
       "<div><h4>重點注意</h4>" + list(r.watch) + "</div></div></details></div>";
@@ -165,7 +165,7 @@
   async function send(action, key) {
     const u = (ui[key] = ui[key] || {});
     const req = { action, nickname: u.nick || "", phone: u.phone || "", roleId: key };
-    if (!req.nickname || !req.phone) { u.msg = "請選暱稱並輸入手機號碼"; u.ok = false; renderDynamic(); return; }
+    if (!req.nickname || !req.phone) { u.msg = "請選暱稱並填寫手機號碼做本人確認"; u.ok = false; renderDynamic(); return; }
     u.msg = "送出中…"; u.ok = true; renderDynamic();
     try {
       const r = await apiPost(req);
