@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>GRG 2026 工作人員專區</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <p class="kicker">GRG 2026 臺灣推廣科學競賽</p>
+    <h1>工作人員專區</h1>
+    <p class="meta" id="eventMeta"></p>
+    <ol class="steps">
+      <li><b>看簡報</b>了解整天流程與會場動線</li>
+      <li><b>看崗位</b>每個崗位要做什麼、要帶什麼</li>
+      <li><b>認領崗位</b><span id="openText"></span>選暱稱、輸入電話送出</li>
+    </ol>
+    <a class="btn-pdf" id="pdfBtn" target="_blank" rel="noopener">賽事籌備細項（PDF）</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <section>
+    <h2>每個人都要知道</h2>
+    <ul class="common" id="common"></ul>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>20 個崗位</h2>
+      <span class="count" id="countText"></span>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <section id="signup">
+    <h2>認領崗位</h2>
+    <div class="lockbox" id="lockbox">
+      <p class="lock-title">尚未開放</p>
+      <p>開放時間：<b>10/9（四）00:00</b></p>
+      <p class="countdown" id="countdown"></p>
+    </div>
+    <form id="form" class="form">
+      <label>1. 你的群組暱稱
+        <select id="nick" required><option value="">請選擇</option></select>
+      </label>
+      <label>2. 你的手機號碼（驗證身分用，不會公開）
+        <input id="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="09xx-xxx-xxx" required>
+      </label>
+      <label>3. 想認領的崗位（或由主辦單位安排）
+        <select id="role" required><option value="">請選擇</option></select>
+      </label>
+      <p class="rule">一個崗位限一人，先送出先得。不確定選哪個，可以選最下面的「由主辦單位安排」（可多人）。之後想換，用同一組暱稱和電話重新選就好。</p>
+      <div class="actions">
+        <button type="submit" id="submitBtn">送出認領</button>
+        <button type="button" id="cancelBtn" class="ghost">取消我的認領</button>
+      </div>
+      <p class="msg" id="msg" role="status"></p>
+    </form>
+  </section>
+
+  <section>
+    <h2>目前認領狀況</h2>
+    <table class="status"><thead><tr><th>#</th><th>崗位</th><th>認領人</th></tr></thead><tbody id="statusBody"></tbody></table>
+  </section>
+
+  <footer>
+    <p id="contact"></p>
+    <p class="demo" id="demoNote" hidden>示範模式：尚未連接後台，資料只存在這台裝置。</p>
+  </footer>
+</main>
+
+<script src="config.js"></script>
+<script src="roles.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
