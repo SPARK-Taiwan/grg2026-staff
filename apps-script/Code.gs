@@ -43,6 +43,12 @@ function normalizePhone_(raw) {
   return d;
 }
 
+// 只比對最後 9 碼：試算表把電話存成數字時，開頭的 0 會不見
+function samePhone_(a, b) {
+  var x = normalizePhone_(a), y = normalizePhone_(b);
+  return x.length >= 9 && y.length >= 9 && x.slice(-9) === y.slice(-9);
+}
+
 function isOpen_(now) {
   if (now < OPEN_AT) return false;
   if (CLOSE_AT && now >= CLOSE_AT) return false;
@@ -59,8 +65,7 @@ function decide_(req, state, now) {
   var nick = String(req.nickname || '').trim();
   if (!Object.prototype.hasOwnProperty.call(state.staff, nick)) return { ok: false, message: '找不到這個暱稱' };
   if (state.fails >= MAX_FAILS) return { ok: false, message: '電話錯誤太多次，請 ' + LOCK_MINUTES + ' 分鐘後再試' };
-  var phone = normalizePhone_(req.phone);
-  if (!phone || phone !== normalizePhone_(state.staff[nick])) return { ok: false, badPhone: true, message: '電話號碼不符' };
+  if (!samePhone_(req.phone, state.staff[nick])) return { ok: false, badPhone: true, message: '電話號碼不符' };
 
   if (fixedNick_(nick)) return { ok: false, message: '你的崗位已由主辦單位指定（' + ROLE_NAMES[fixedNick_(nick)] + '），如需更改請聯絡大會' };
   if (req.action === 'claim' && FIXED[String(parseInt(req.roleId, 10))]) return { ok: false, message: '這個崗位已由主辦單位指定' };
