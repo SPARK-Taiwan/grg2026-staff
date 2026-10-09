@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>GRG 2026 計分台</title>
+<link rel="stylesheet" href="score.css">
+</head>
+<body>
+<div class="demo" id="demoNote" hidden>示範模式：計分台密碼 demo；資料只存在這台裝置　<a href="#" id="demoReset">清空示範資料</a></div>
+<header class="top">
+  <div class="wrap">
+    <p class="kicker">GRG 2026 即時計分</p>
+    <h1>計分台</h1>
+    <nav class="tabs" id="tabs"></nav>
+  </div>
+</header>
+<main class="wrap">
+  <section class="login" id="login" hidden>
+    <label class="lbl">計分台密碼<input id="pw" type="password" autocomplete="current-password"></label>
+    <button type="button" id="loginBtn">進入</button>
+    <p class="msg" id="loginMsg"></p>
+  </section>
+  <section id="main" hidden>
+    <div class="status"><span id="warn"></span><span id="updated"></span></div>
+    <div id="view"></div>
+  </section>
+</main>
+<script src="../config.js"></script>
+<script src="data.js"></script>
+<script src="rules.js"></script>
+<script src="server.js"></script>
+<script src="api.js"></script>
+<script src="common.js"></script>
+<script>
+(function () {
+  const R = window.GRG_RULES, D = window.GRG_DATA, UI = window.GRG_UI, API = window.GRG_API;
+  const $ = (id) => document.getElementById(id);
+  const esc = UI.esc, pad = UI.pad;
+  let pw = null;
+  try { pw = sessionStorage.getItem("grgScoreAdmin"); } catch (e) {}
+  let server = { state: {}, claims: {} };
+  const state = () => server.state || {};
+  const TABS = [["draw", "抽籤登錄"], ["sumo", "相撲成績"], ["weigh", "同分秤重"], ["final", "決賽"], ["line", "循跡"], ["mr", "MR"], ["assign", "場地指派"], ["award", "頒獎名單"]];
+  let tab = location.hash.slice(1) || "draw";
+  let gk = "EA", fieldFilter = "", drawPool = "E";
+  $("demoNote").hidden = !API.demo;
+  $("demoReset").addEventListener("click", (e) => { e.preventDefault(); if (confirm("清空這台裝置的示範資料？")) { localStorage.removeItem("grgScoreDemo"); refresh(); } });
+
+  // ---------- 登入 ----------
+  async function login(p) {
+    const r = await API.post({ action: "score.login", admin: p });
+    if (!r.ok) throw new Error(r.message);
+    pw = p; try { sessionStorage.setItem("grgScoreAdmin", p); } catch (e) {}
+  }
+  $("loginBtn").addEventListener("click", async () => {
+    $("loginMsg").className = "msg"; $("loginMsg").textContent = "確認中…";
+    try { await login($("pw").value); $("loginMsg").textContent = ""; show(); }
+    catch (e) { $("loginMsg").className = "msg err"; $("loginMsg").textContent = e.message || "連線失敗"; }
+  });
+  $("pw").addEventListener("keydown", (e) => { if (e.key === "Enter") $("loginBtn").click(); });
+  function show() { $("login").hidden = !!pw; $("main").hidden = !pw; if (pw) render(); }
+
+  async function save(items) {
+    try {
+      const r = await API.post({ action: "score.put", admin: pw, items });
+      if (!r.ok) return { ok: false, message: r.message };
+      server = r;
+      const bad = (r.results || []).filter((x) => !x.ok);
+      return bad.length ? { ok: false, message: bad.map((x) => x.message).join("、") } : { ok: true, message: "已儲存" };
+    } catch (e) { return { ok: false, message: "連線失敗，沒有儲存，請再按一次" }; }
+  }
+  const saveAndRender = (items) => save(items).then((r) => { UI.toast(r.message, r.ok); render(); return r; });
+
+  // ---------- 各分頁 ----------
+  const chips = (list, cur, attr) => '<div class="slots noprint">' + list.map(([v, l]) => '<button type="button" class="' + (v === cur ? "on" : "") + '" data-' + attr + '="' + v + '">' + l + "</button>").join("") + "</div>";
+  const POOLS = { E: ["EA", "EB"], J: ["J"], R: ["R"] };
+  const POOL_NAME = { E: "國小自動組（上午）", J: "國高中自動組（上午）", R: "遙控組（下午）" };
+
+  function drawView(st) {
+    const codes = [].concat(...POOLS[drawPool].map((g) => D.groups[g].codes));
+    const codeOf = {};
+    codes.forEach((c) => { const d = st["draw:" + c]; if (d && d.payload.team) codeOf[d.payload.team] = c; });
+    const teams = D.teams[drawPool];
+    const n = teams.filter((t) => codeOf[t.id]).length;
+    return chips([["E", "國小自動組"], ["J", "國高中自動組"], ["R", "遙控組"]], drawPool, "pool") +
+      "<h2>" + POOL_NAME[drawPool] + '　<span class="mute small">已登錄 ' + n + " / " + teams.length + "</span></h2>" +
+      '<p class="note">隊伍抽到籤後，在該隊選它的代號（選了就存）。選錯直接改選；代號被別隊用了會先問你。</p>' +
+      '<table class="tbl"><thead><tr><th>隊伍</th><th>學校／單位</th><th style="width:150px">抽到的代號</th></tr></thead><tbody>' +
+      teams.map((t) => "<tr><td>" + UI.plainTeam(t) + (t.level && drawPool !== "E" ? ' <span class="tag">' + t.level + "</span>" : "") + "</td><td class='mute'>" + esc(t.unit) + "</td><td>" +
+        '<select data-draw="' + t.id + '"><option value="">—</option>' + codes.map((c) => {
+          const owner = (st["draw:" + c] || {}).payload;
+          const taken = owner && owner.team && owner.team !== t.id;
+          return '<option value="' + c + '"' + (codeOf[t.id] === c ? " selected" : "") + ">" + c + (taken ? "（已被選）" : "") + "</option>";
+        }).join("") + "</select></td></tr>").join("") + "</tbody></table>";
+  }
+
+  function sumoView(st) {
+    const groups = [["EA", "國小 A 組"], ["EB", "國小 B 組"], ["J", "國高中組"], ["R", "遙控組"]];
+    const ms = D.schedule[gk].filter((m) => !fieldFilter || m[1] === Number(fieldFilter)).slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    return chips(groups, gk, "gk") + "<h2>場地進度</h2>" + UI.fieldsHTML(st, gk, { next: true }) +
+      '<h2>全部對戰</h2><label class="lbl inline noprint" style="max-width:240px">只看場地<select id="fieldFilter"><option value="">全部場地</option>' +
+      D.groups[gk].fields.map((f) => '<option value="' + f + '"' + (String(f) === fieldFilter ? " selected" : "") + ">場地 " + f + "</option>").join("") + "</select></label>" +
+      '<p class="note">計分台改過的場次，裁判就不能再改（避免覆蓋）。</p>' +
+      ms.map((m) => UI.sumoMatchHTML(st, gk, m, { admin: true, showField: true })).join("");
+  }
+
+  function weighView(st) {
+    const groups = ["EA", "EB", "J", "R"];
+    return groups.map((g) => {
+      const ties = R.tiesNeedingWeight(D, st, g);
+      const s = R.groupStandings(D, st, g);
+      const weighed = s.rows.filter((r) => r.weight != null);
+      return "<h2>" + esc(D.groups[g].name) + (s.done ? "" : '　<span class="tag">預賽進行中 ' + s.played + "/" + s.total + "</span>") + "</h2>" +
+        (ties.length ? ties.map((t) => '<div class="card"><b>第 ' + t.rank + " 名起 " + t.codes.length + " 隊同分（積分、對戰得分都一樣）</b>" +
+          '<p class="note">秤重後輸入公克數，輕者排前面。</p>' +
+          t.codes.map((c) => '<label class="lap"><span>' + esc(c) + '</span><input type="number" inputmode="decimal" data-wcode="' + c + '" value="' + ((st["weight:" + c] || {}).payload ? st["weight:" + c].payload.g : "") + '" placeholder="公克"><small class="mute">' + esc((R.teamOfCode(D, st, c) || {}).name || "") + "</small></label>").join("") +
+          '<div class="foot"><button type="button" data-wsave="' + t.codes.join(",") + '">儲存重量</button></div></div>').join("")
+          : '<p class="mute">目前沒有需要秤重的同分。</p>') +
+        (weighed.length ? '<p class="note">已記錄重量：' + weighed.map((r) => esc(r.code) + " " + r.weight + " g").join("、") + "</p>" : "") +
+        "<details><summary class='mute'>看預賽積分</summary>" + UI.standingsHTML(st, g, { admin: true }) + "</details>";
+    }).join("");
+  }
+
+  function finalView(st) {
+    return ["E", "J", "R"].map((fam) => {
+      const F = R.finals(D, st, fam);
+      const codes = [].concat(...POOLS[fam].map((g) => D.groups[g].codes));
+      const slotList = fam === "R" ? [1, 2, 3, 4, 5, 6].map((i) => "pm:R" + i) : Array.from({ length: 15 }, (_, i) => "am:" + (i + 1));
+      const setup = (slot) => {
+        const p = (st["final:" + fam + ":" + slot] || {}).payload || {};
+        const x = F[slot];
+        const sel = (side, auto) => '<select data-fset="' + side + '"><option value="">自動' + (auto ? "（" + auto + "）" : "") + "</option>" + codes.map((c) => '<option value="' + c + '"' + (p[side] === c ? " selected" : "") + ">" + c + "</option>").join("") + "</select>";
+        const autoRed = slot === "F" ? F.SF1.winner : F.prelimDone ? (R.seeds(D, st, fam)[slot][0] || {}).code : null;
+        const autoBlue = slot === "F" ? F.SF2.winner : F.prelimDone ? (R.seeds(D, st, fam)[slot][1] || {}).code : null;
+        return '<div class="card" data-fam="' + fam + '" data-fslot="' + slot + '"><div class="fh"><b>' + UI.FINAL_NAME[slot] + '</b><span class="mute small">' + esc(x.labels.join(" vs ")) + "</span></div>" +
+          '<div class="grid2" style="gap:8px"><label class="lbl inline">場地（負責裁判可輸入）<select data-fset="field"><option value="">未指定</option>' +
+          slotList.map((s) => '<option value="' + s + '"' + (p.field === s ? " selected" : "") + ">" + R.slotLabel(s) + "</option>").join("") + "</select></label>" +
+          '<div class="grid2" style="gap:8px"><label class="lbl inline">紅方' + sel("red", autoRed) + '</label><label class="lbl inline">藍方' + sel("blue", autoBlue) + "</label></div></div>" +
+          '<div class="foot"><button type="button" class="small" data-fsave>儲存場地與對戰</button></div></div>' + UI.finalEditHTML(st, fam, slot, { admin: true });
+      };
+      return "<h2>" + UI.FAM_NAME[fam] + (F.prelimDone ? "" : '　<span class="tag warn">預賽未完成，自動配對尚未產生</span>') + "</h2>" +
+        '<p class="note">對戰「自動」＝依預賽名次（' + (fam === "E" ? "A1 vs B2、B1 vs A2" : "1 vs 4、2 vs 3") + "）。指定場地後，該場地裁判的手機會出現這場。</p>" +
+        setup("SF1") + setup("SF2") + setup("F");
+    }).join("");
+  }
+
+  function lineView(st) {
+    const set = (st["lineset"] || {}).payload || {};
+    return '<h2>現場抽籤設定</h2><div class="card"><div class="grid2" style="gap:8px"><label class="lbl inline">圈數（2–5）<select id="laps"><option value="">—</option>' +
+      [2, 3, 4, 5].map((n) => "<option" + (set.laps === n ? " selected" : "") + ">" + n + "</option>").join("") + '</select></label><label class="lbl inline">每圈秒數（10–30）<input id="sec" type="number" min="10" max="30" step="1" value="' + (set.sec || "") + '"></label></div>' +
+      '<div class="foot"><button type="button" id="lineSet">儲存設定</button></div></div>' +
+      "<h2>輸入／修改成績</h2>" + UI.lineEditorHTML(st) + "<h2>目前排名</h2>" + UI.lineHTML(st, { admin: true });
+  }
+  const mrView = (st) => "<h2>輸入／修改成績</h2>" + UI.mrEditorHTML(st) + "<h2>目前排名</h2>" + UI.mrHTML(st, { admin: true });
+
+  function assignView(st) {
+    const slots = R.slotsOf(st), claims = server.claims || {};
+    const keys = Object.keys(R.defaultSlots());
+    const row = (s) => "<tr><td>" + esc(R.slotLabel(s)) + '</td><td><input data-slot="' + s + '" value="' + slots[s].join(", ") + '"></td><td class="mute small">' +
+      slots[s].map((id) => "#" + pad(id) + " " + esc(claims[id] || "（未認領）")).join("<br>") + "</td></tr>";
+    return "<h2>場地指派</h2><p class=\"note\">填崗位編號（多位用逗號分隔）。該崗位的人登入裁判頁，就能輸入這個場地的成績。</p>" +
+      '<table class="tbl"><thead><tr><th>場地</th><th style="width:140px">崗位編號</th><th>目前的人</th></tr></thead><tbody>' + keys.map(row).join("") + "</tbody></table>" +
+      '<div class="foot"><button type="button" class="ghost" id="assignReset">恢復預設</button><button type="button" id="assignSave">儲存指派</button></div>';
+  }
+
+  function awardView(st) {
+    const warn = [];
+    ["EA", "EB", "J", "R"].forEach((g) => {
+      const s = R.groupStandings(D, st, g);
+      if (!s.done) warn.push(D.groups[g].short + " 預賽未完成（" + s.played + "/" + s.total + "）");
+      if (R.tiesNeedingWeight(D, st, g).length) warn.push(D.groups[g].short + " 有同分待秤重");
+      const un = D.groups[g].codes.filter((c) => !R.teamOfCode(D, st, c));
+      if (un.length) warn.push(D.groups[g].short + " 有 " + un.length + " 個代號未登錄抽籤");
+    });
+    ["E", "J", "R"].forEach((f) => { if (!R.finals(D, st, f).champion) warn.push(UI.FAM_NAME[f] + " 決賽未完成"); });
+    const lr = R.lineRanking(D, st);
+    if (!lr.set) warn.push("循跡未設定圈數秒數");
+    const lmiss = lr.rows.filter((r) => !r.best).length;
+    if (lmiss) warn.push("循跡有 " + lmiss + " 隊沒有成績");
+    const mmiss = D.teams.M.filter((t) => !st["mr:" + t.id + ":1"] && !st["mr:" + t.id + ":2"]).length;
+    if (mmiss) warn.push("MR 有 " + mmiss + " 隊沒有成績");
+    const list = [].concat(R.sumoAwards(D, st, "E"), R.sumoAwards(D, st, "J"), R.sumoAwards(D, st, "R"), R.lineAwards(D, st), R.mrAwards(D, st));
+    const cats = [];
+    list.forEach((a) => { let c = cats.find((x) => x.cat === a.cat); if (!c) cats.push(c = { cat: a.cat, items: [] }); c.items.push(a); });
+    return '<div class="foot noprint" style="justify-content:flex-start"><button type="button" onclick="window.print()">列印頒獎名單</button></div>' +
+      (warn.length ? '<div class="banner">尚未完成：' + warn.map(esc).join("、") + "</div>" : '<div class="banner" style="background:var(--okbg);color:var(--ok)">全部完成</div>') +
+      '<p class="note">唱名時只念組別、獎項與隊名。</p>' +
+      cats.map((c) => '<div class="award-cat"><h2>' + esc(c.cat) + '</h2><table class="tbl"><thead><tr><th style="width:90px">獎項</th><th>隊伍</th><th>學校／單位</th></tr></thead><tbody>' +
+        c.items.map((a) => "<tr><td><b>" + esc(a.title) + "</b></td><td>" + (a.team ? esc(a.team.name) : '<span class="mute">' + esc(a.code || "") + "（未登錄）</span>") + "</td><td class='mute'>" + (a.team ? esc(a.team.unit) : "") + "</td></tr>").join("") +
+        "</tbody></table></div>").join("");
+  }
+
+  function render() {
+    if (!pw) return show();
+    $("tabs").innerHTML = TABS.map(([id, l]) => '<button type="button" class="' + (id === tab ? "on" : "") + '" data-tab="' + id + '">' + l + "</button>").join("");
+    const st = state();
+    const v = { draw: drawView, sumo: sumoView, weigh: weighView, final: finalView, line: lineView, mr: mrView, assign: assignView, award: awardView }[tab] || drawView;
+    $("view").innerHTML = v(st);
+  }
+
+  // ---------- 事件 ----------
+  $("tabs").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-tab]");
+    if (b) { tab = b.dataset.tab; history.replaceState(null, "", "#" + tab); render(); }
+  });
+  $("view").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    const st = state();
+    if (b.dataset.pool) { drawPool = b.dataset.pool; render(); }
+    else if (b.dataset.gk) { gk = b.dataset.gk; fieldFilter = ""; render(); }
+    else if (b.dataset.wsave) {
+      const items = b.dataset.wsave.split(",").map((c) => {
+        const v = document.querySelector('[data-wcode="' + c + '"]').value;
+        return { key: "weight:" + c, payload: v === "" ? null : { g: Number(v) } };
+      });
+      saveAndRender(items);
+    } else if (b.hasAttribute("data-fsave")) {
+      const c = b.closest("[data-fslot]");
+      const key = "final:" + c.dataset.fam + ":" + c.dataset.fslot;
+      const get = (n) => c.querySelector('[data-fset="' + n + '"]').value;
+      const p = Object.assign({}, (st[key] || {}).payload);
+      ["field", "red", "blue"].forEach((n) => { if (get(n)) p[n] = get(n); else delete p[n]; });
+      saveAndRender([{ key, payload: Object.keys(p).length ? p : null }]);
+    } else if (b.id === "lineSet") {
+      const laps = Number($("laps").value), sec = Number($("sec").value);
+      saveAndRender([{ key: "lineset", payload: { laps, sec } }]);
+    } else if (b.id === "assignSave") {
+      const slots = {};
+      for (const el of document.querySelectorAll("[data-slot]")) {
+        const ids = el.value.split(/[,，、\s]+/).filter(Boolean).map(Number);
+        if (ids.some((x) => !(x >= 1 && x <= 18))) { UI.toast(R.slotLabel(el.dataset.slot) + "：崗位編號要是 1–18", false); return; }
+        slots[el.dataset.slot] = ids;
+      }
+      saveAndRender([{ key: "assign", payload: { slots } }]);
+    } else if (b.id === "assignReset") {
+      if (confirm("恢復預設的場地指派？")) saveAndRender([{ key: "assign", payload: null }]);
+    }
+  });
+  $("view").addEventListener("change", (e) => {
+    const el = e.target, st = state();
+    if (el.id === "fieldFilter") { fieldFilter = el.value; render(); return; }
+    if (el.dataset.draw) {
+      const team = el.dataset.draw, code = el.value;
+      const items = [];
+      Object.keys(st).filter((k) => k.startsWith("draw:") && st[k].payload.team === team && k !== "draw:" + code).forEach((k) => items.push({ key: k, payload: null }));
+      if (code) {
+        const owner = (st["draw:" + code] || {}).payload;
+        if (owner && owner.team && owner.team !== team) {
+          const o = R.teamById(D, owner.team);
+          if (!confirm(code + " 目前是「" + (o ? o.name : owner.team) + "」，要改給這隊嗎？（原本那隊會變成未登錄）")) { render(); return; }
+        }
+        items.push({ key: "draw:" + code, payload: { team } });
+      }
+      saveAndRender(items);
+    }
+  });
+  UI.bindEditors($("view"), { state, save, render, toast: UI.toast, admin: true });
+
+  async function refresh() {
+    try {
+      const r = await API.load();
+      if (r && r.ok) { server = r; $("updated").textContent = "更新 " + UI.hhmmss(new Date()); }
+    } catch (e) { $("updated").textContent = "連線中斷"; }
+    if (pw && !UI.busy($("view")) && !Object.keys(UI.drafts).length) render();
+  }
+  show();
+  refresh();
+  setInterval(refresh, 15000);
+})();
+</script>
+</body>
+</html>

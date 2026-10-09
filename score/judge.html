@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>GRG 2026 裁判計分</title>
+<link rel="stylesheet" href="score.css">
+</head>
+<body>
+<div class="demo" id="demoNote" hidden>示範模式：暱稱「示範裁判07」、電話 0900000007（數字＝崗位編號）</div>
+<header class="top">
+  <div class="wrap">
+    <p class="kicker">GRG 2026 裁判計分</p>
+    <h1 id="who">登入</h1>
+    <p class="meta" id="roleText"></p>
+  </div>
+</header>
+<main class="wrap">
+  <section class="login" id="login" hidden>
+    <p class="mute">用認領崗位時的暱稱和電話登入。</p>
+    <label class="lbl">暱稱<select id="nick"></select></label>
+    <label class="lbl">電話<input id="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="09xxxxxxxx"></label>
+    <button type="button" id="loginBtn">登入</button>
+    <p class="msg" id="loginMsg"></p>
+  </section>
+
+  <section id="main" hidden>
+    <div class="status"><span id="qText"></span><span><span id="updated"></span>　<a href="#" id="logout">登出</a></span></div>
+    <div id="rejected"></div>
+    <div class="slots" id="slots"></div>
+    <div id="view"></div>
+  </section>
+</main>
+<script src="../config.js"></script>
+<script src="data.js"></script>
+<script src="rules.js"></script>
+<script src="server.js"></script>
+<script src="api.js"></script>
+<script src="common.js"></script>
+<script>
+(function () {
+  const R = window.GRG_RULES, D = window.GRG_DATA, UI = window.GRG_UI, API = window.GRG_API;
+  const $ = (id) => document.getElementById(id);
+  const esc = UI.esc;
+  const AK = "grgScoreJudge";
+  let auth = API.store.get(AK, null);     // {nickname, phone}
+  let server = { state: {}, claims: {}, nicknames: [] };
+  let slot = API.store.get("grgScoreSlot", null);
+  $("demoNote").hidden = !API.demo;
+
+  const state = () => API.overlay(server.state || {}, auth && auth.nickname);
+  const myRoles = () => Object.keys(server.claims || {}).filter((id) => server.claims[id] === (auth && auth.nickname)).map(Number);
+  function mySlots() {
+    const all = R.slotsOf(state()), roles = myRoles();
+    return Object.keys(all).filter((s) => all[s].some((r) => roles.indexOf(Number(r)) >= 0));
+  }
+
+  // ---------- 登入 ----------
+  function showLogin() {
+    $("login").hidden = false; $("main").hidden = true;
+    $("who").textContent = "登入"; $("roleText").textContent = "";
+    $("nick").innerHTML = '<option value="">選你的暱稱</option>' + (server.nicknames || []).map((n) => "<option>" + esc(n) + "</option>").join("");
+  }
+  $("loginBtn").addEventListener("click", async () => {
+    const req = { action: "score.login", nickname: $("nick").value, phone: $("phone").value };
+    if (!req.nickname || !req.phone) { $("loginMsg").className = "msg err"; $("loginMsg").textContent = "請選暱稱、輸入電話"; return; }
+    $("loginBtn").disabled = true; $("loginMsg").className = "msg"; $("loginMsg").textContent = "確認中…";
+    try {
+      const r = await API.post(req);
+      if (!r.ok) { $("loginMsg").className = "msg err"; $("loginMsg").textContent = r.message; return; }
+      auth = { nickname: req.nickname, phone: req.phone };
+      API.store.set(AK, auth);
+      showMain();
+    } catch (e) { $("loginMsg").className = "msg err"; $("loginMsg").textContent = "連線失敗，請確認網路"; }
+    finally { $("loginBtn").disabled = false; }
+  });
+  $("logout").addEventListener("click", (e) => {
+    e.preventDefault();
+    if (API.queue().length && !confirm("還有 " + API.queue().length + " 筆成績沒上傳，登出後會留在這支手機，確定登出？")) return;
+    auth = null; API.store.set(AK, null); showLogin();
+  });
+
+  // ---------- 主畫面 ----------
+  function showMain() { $("login").hidden = true; $("main").hidden = false; render(); }
+
+  function queueText() {
+    const n = API.queue().length;
+    $("qText").className = "q " + (n ? "warn" : "ok");
+    $("qText").textContent = n ? "待上傳 " + n + " 筆（網路恢復會自動補傳）" : "成績都已上傳 ✓";
+    const rej = API.rejected();
+    $("rejected").innerHTML = rej.length ? '<div class="banner err">有 ' + rej.length + " 筆沒有被接受：" + rej.map((x) => esc(x.key) + "（" + esc(x.message) + "）").join("、") +
+      ' <button type="button" class="ghost small" id="clearRej">知道了</button></div>' : "";
+    const c = $("clearRej");
+    if (c) c.onclick = () => { API.clearRejected(); queueText(); };
+  }
+
+  function slotView(st, s) {
+    const [sess, f] = s.split(":");
+    let gk = null, field = null;
+    if (sess === "am") { field = Number(f); gk = ["EA", "EB", "J"].find((g) => D.groups[g].fields.indexOf(field) >= 0); }
+    else if (f[0] === "R") { gk = "R"; field = Number(f.slice(1)); }
+    if (gk) {
+      const ms = D.schedule[gk].filter((m) => m[1] === field).sort((a, b) => a[0] - b[0]);
+      const now = ms.find((m) => !R.isDone(R.matchResult(st, gk, m)));
+      const fam = gk === "EA" || gk === "EB" ? "E" : gk;
+      const fins = ["SF1", "SF2", "F"].filter((x) => ((st["final:" + fam + ":" + x] || {}).payload || {}).field === s);
+      return (fins.length ? "<h2>決賽</h2>" + fins.map((x) => UI.finalEditHTML(st, fam, x)).join("") : "") +
+        "<h2>" + esc(D.groups[gk].short) + "｜場地 " + field + " 預賽</h2>" +
+        '<p class="note">' + ms.filter((m) => R.isDone(R.matchResult(st, gk, m))).length + " / " + ms.length + " 場完成。每回合點結果，3 回合都點完按「送出」。</p>" +
+        ms.map((m) => UI.sumoMatchHTML(st, gk, m, { openPending: m === now })).join("");
+    }
+    if (f === "MR") return "<h2>MR 計分</h2>" + UI.mrEditorHTML(st);
+    return "<h2>循跡計時</h2>" + UI.lineEditorHTML(st);
+  }
+
+  function render() {
+    if (!auth) return showLogin();
+    const st = state(), roles = myRoles(), slots = mySlots();
+    $("who").textContent = auth.nickname;
+    $("roleText").textContent = roles.length ? "崗位 " + roles.map((r) => "#" + UI.pad(r)).join("、") : "";
+    if (!slots.length) {
+      $("slots").innerHTML = "";
+      $("view").innerHTML = '<div class="banner">你目前沒有負責計分的場地。如有異動請找計分台。</div>';
+      queueText(); return;
+    }
+    if (slots.indexOf(slot) < 0) {
+      const pm = new Date().getHours() * 60 + new Date().getMinutes() >= 12 * 60 + 30;
+      slot = slots.find((s) => s.startsWith(pm ? "pm" : "am")) || slots[0];
+    }
+    $("slots").innerHTML = slots.map((s) => '<button type="button" class="' + (s === slot ? "on" : "") + '" data-slot="' + s + '">' + esc(R.slotLabel(s)) + "</button>").join("");
+    $("view").innerHTML = slotView(st, slot);
+    queueText();
+  }
+
+  $("slots").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-slot]");
+    if (!b) return;
+    slot = b.dataset.slot; API.store.set("grgScoreSlot", slot); render();
+  });
+
+  async function save(items) {
+    API.enqueue(items);
+    const r = await API.flush(auth);
+    if (r.data) server = r.data;
+    if (r.offline) return { ok: true, message: "已存在手機，網路恢復後自動上傳" };
+    if (r.error) return { ok: true, message: "已存在手機（" + r.error + "）" };
+    if (r.failed) return { ok: false, message: "沒有被接受：" + (API.rejected().slice(-1)[0] || {}).message };
+    return { ok: true, message: "已上傳" };
+  }
+  UI.bindEditors($("view"), { state, save, render, toast: UI.toast, admin: false });
+
+  async function refresh() {
+    if (API.queue().length && auth) { const r = await API.flush(auth); if (r.data) server = r.data; }
+    try {
+      const r = await API.load();
+      if (r && r.ok) { server = r; $("updated").textContent = "更新 " + UI.hhmmss(new Date()); }
+    } catch (e) { $("updated").textContent = "離線中"; }
+    if (!auth) return showLogin();
+    if (UI.busy($("view"))) { queueText(); return; }
+    render();
+  }
+  refresh();
+  setInterval(refresh, 15000);
+  window.addEventListener("online", refresh);
+})();
+</script>
+</body>
+</html>

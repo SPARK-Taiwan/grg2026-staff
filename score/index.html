@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GRG 2026 即時成績</title>
+<link rel="stylesheet" href="score.css">
+</head>
+<body>
+<div class="demo" id="demoNote" hidden>示範模式：資料只存在這台裝置</div>
+<header class="top">
+  <div class="wrap">
+    <p class="kicker">GRG 2026 臺灣推廣科學競賽</p>
+    <h1>即時成績</h1>
+    <p class="meta">2026/10/25（日）桃園市桃園區成功國小 活動中心 2F</p>
+    <nav class="tabs" id="tabs"></nav>
+  </div>
+</header>
+<main class="wrap">
+  <div class="status"><span id="updated">讀取中…</span><span>每 15 秒自動更新</span></div>
+  <div id="view"></div>
+</main>
+<script src="../config.js"></script>
+<script src="data.js"></script>
+<script src="rules.js"></script>
+<script src="server.js"></script>
+<script src="api.js"></script>
+<script src="common.js"></script>
+<script>
+(function () {
+  const UI = window.GRG_UI, API = window.GRG_API;
+  const $ = (id) => document.getElementById(id);
+  const qs = new URLSearchParams(location.search);
+  const tv = qs.has("tv");
+  const TABS = [
+    { id: "E", label: "國小自動組", sess: "am" }, { id: "J", label: "國高中自動組", sess: "am" },
+    { id: "R", label: "遙控組", sess: "pm" }, { id: "L", label: "循跡賽", sess: "pm" }, { id: "M", label: "MR", sess: "pm" },
+  ];
+  const pm = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes() >= 12 * 60 + 30; };
+  let tab = qs.get("tab") || (pm() ? "R" : "E");
+  let state = {};
+
+  if (tv) document.body.classList.add("tv");
+  $("demoNote").hidden = !API.demo;
+
+  function render() {
+    $("tabs").innerHTML = TABS.map((t) => '<button type="button" class="' + (t.id === tab ? "on" : "") + '" data-tab="' + t.id + '">' + t.label + "</button>").join("");
+    let h = "";
+    if (tab === "E") {
+      h = "<h2>場地進度</h2>" + UI.fieldsHTML(state, "EA") + UI.fieldsHTML(state, "EB").replace('class="fields"', 'class="fields" style="margin-top:8px"') +
+        '<div class="grid2"><div><h2>A 組預賽積分</h2>' + UI.standingsHTML(state, "EA") + "</div><div><h2>B 組預賽積分</h2>" + UI.standingsHTML(state, "EB") + "</div></div>" +
+        "<h2>決賽</h2>" + UI.finalsHTML(state, "E");
+    } else if (tab === "J" || tab === "R") {
+      h = "<h2>場地進度</h2>" + UI.fieldsHTML(state, tab) + "<h2>預賽積分</h2>" + UI.standingsHTML(state, tab, { unit: !tv }) + "<h2>決賽</h2>" + UI.finalsHTML(state, tab);
+    } else if (tab === "L") {
+      h = "<h2>循跡賽</h2>" + UI.lineHTML(state, { unit: true });
+    } else {
+      h = "<h2>MR</h2>" + UI.mrHTML(state, { unit: true });
+    }
+    $("view").innerHTML = h;
+  }
+
+  $("tabs").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-tab]");
+    if (!b) return;
+    tab = b.dataset.tab;
+    history.replaceState(null, "", "?" + new URLSearchParams({ ...Object.fromEntries(qs), tab }).toString());
+    render();
+  });
+
+  async function refresh() {
+    try {
+      const r = await API.load();
+      if (r && r.ok) { state = r.state || {}; $("updated").textContent = "更新於 " + UI.hhmmss(new Date()); render(); }
+      else $("updated").textContent = "讀取失敗，稍後自動重試";
+    } catch (e) { $("updated").textContent = "連線中斷，稍後自動重試"; }
+  }
+  refresh();
+  setInterval(refresh, 15000);
+
+  // 大螢幕：在同一個時段的分頁之間輪播
+  if (tv && !qs.get("tab")) setInterval(() => {
+    const list = TABS.filter((t) => t.sess === (pm() ? "pm" : "am"));
+    const i = list.findIndex((t) => t.id === tab);
+    tab = list[(i + 1) % list.length].id;
+    render();
+  }, 20000);
+})();
+</script>
+</body>
+</html>

@@ -9,6 +9,7 @@
  *   紀錄      每一次送出的結果（含電話錯誤）
  *
  * 第一次使用：在 Apps Script 編輯器選 setup 執行一次，再部署成網頁應用程式。
+ * 即時計分：同一個專案另有 Score.gs（score/ 網頁的後台），第一次要選 scoreSetup 執行一次。
  * 更新程式後：先執行一次 setup（更新崗位名稱與編號、寫入主辦指定），再到 部署 → 管理部署作業 → 編輯 → 版本選「新版本」→ 部署（網址不變）。
  */
 
@@ -183,7 +184,8 @@ function json_(obj) {
 
 // ---------- 網頁入口 ----------
 
-function doGet() {
+function doGet(e) {
+  if (e && e.parameter && e.parameter.score) return scoreGet_();   // 即時計分（Score.gs）
   var now = new Date();
   var s = readStaff_();
   return json_({ open: isOpen_(now), openAt: OPEN_AT.toISOString(), now: now.toISOString(), nicknames: s.order, claims: readClaims_(), arrange: readArrange_(), fixed: FIXED });
@@ -192,6 +194,7 @@ function doGet() {
 function doPost(e) {
   var req;
   try { req = JSON.parse(e.postData.contents); } catch (err) { return json_({ ok: false, message: '資料格式錯誤' }); }
+  if (String(req.action || '').indexOf('score.') === 0) return scorePost_(req);   // 即時計分（Score.gs）
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
