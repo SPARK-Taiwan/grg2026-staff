@@ -39,6 +39,15 @@ for key, t in zip(keys, team_tables):
     teams[key] = rows
 assert [len(teams[k]) for k in keys] == [21, 17, 14, 9, 8], [len(teams[k]) for k in keys]
 
+# 主辦調整的出賽順序（和公告表格不同時寫在這裡）：MR 的 JGJHS02 排在 JGJHS03 前面（10/9）
+ORDER = {"M": ["這次一定行", "再次同一隊", "程風破浪", "合作無間", "KCIS ARK", "JGJHS", "JGJHS02", "JGJHS03"]}
+for key, names in ORDER.items():
+    by = {t["name"]: t for t in teams[key]}
+    assert sorted(by) == sorted(names), (key, sorted(by))
+    teams[key] = [by[n] for n in names]
+    for i, t in enumerate(teams[key], 1):
+        t["id"] = "%s%02d" % (key, i)
+
 data = {
     "version": "2026-10-25",
     "groups": {
