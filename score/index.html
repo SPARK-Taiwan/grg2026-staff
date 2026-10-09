@@ -17,7 +17,8 @@
   </div>
 </header>
 <main class="wrap">
-  <div class="status"><span id="updated">讀取中…</span><span>每 30 秒自動更新</span></div>
+  <div class="status"><span id="updated">讀取中…</span><button type="button" class="ghost small" id="refreshBtn">立即更新</button></div>
+  <div id="bar"></div>
   <div id="view"></div>
 </main>
 <script src="../config.js"></script>
@@ -28,63 +29,100 @@
 <script src="common.js"></script>
 <script>
 (function () {
-  const UI = window.GRG_UI, API = window.GRG_API;
+  const R = window.GRG_RULES, D = window.GRG_DATA, UI = window.GRG_UI, API = window.GRG_API;
   const $ = (id) => document.getElementById(id);
+  const esc = UI.esc;
   const qs = new URLSearchParams(location.search);
   const tv = qs.has("tv");
   const TABS = [
-    { id: "E", label: "國小自動組", sess: "am" }, { id: "J", label: "國高中自動組", sess: "am" },
-    { id: "R", label: "遙控組", sess: "pm" }, { id: "L", label: "循跡賽", sess: "pm" }, { id: "M", label: "MR", sess: "pm" },
+    { id: "E", label: "國小自動組", sess: "am", groups: ["EA", "EB"] }, { id: "J", label: "國高中自動組", sess: "am", groups: ["J"] },
+    { id: "R", label: "遙控組", sess: "pm", groups: ["R"] }, { id: "L", label: "循跡賽", sess: "pm" }, { id: "M", label: "MR", sess: "pm" },
   ];
+  const SUBS = [["rank", "即時排名"], ["sched", "對戰表"], ["field", "場地進度"], ["final", "決賽"]];
   const pm = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes() >= 12 * 60 + 30; };
-  let tab = qs.get("tab") || (pm() ? "R" : "E");
+  // 使用者的選擇（分頁、子分頁、組別、我的隊伍）記在這支手機
+  const V = Object.assign({ tab: pm() ? "R" : "E", sub: "rank", grp: "EA", me: {} }, API.store.get("grgPubView", {}));
+  if (qs.get("tab")) V.tab = qs.get("tab");
+  const saveV = () => API.store.set("grgPubView", V);
   let state = {};
 
   if (tv) document.body.classList.add("tv");
   $("demoNote").hidden = !API.demo;
+  const seg = (list, cur, attr, cls) => '<div class="seg ' + (cls || "") + '">' + list.map(([v, l]) => '<button type="button" class="' + (v === cur ? "on" : "") + '" data-' + attr + '="' + v + '">' + l + "</button>").join("") + "</div>";
 
-  function render() {
-    $("tabs").innerHTML = TABS.map((t) => '<button type="button" class="' + (t.id === tab ? "on" : "") + '" data-tab="' + t.id + '">' + t.label + "</button>").join("");
-    let h = "";
-    if (tab === "E") {
-      h = "<h2>場地進度</h2>" + UI.fieldsHTML(state, "EA") + UI.fieldsHTML(state, "EB").replace('class="fields"', 'class="fields" style="margin-top:8px"') +
-        '<div class="grid2"><div><h2>A 組預賽積分</h2>' + UI.standingsHTML(state, "EA") + "</div><div><h2>B 組預賽積分</h2>" + UI.standingsHTML(state, "EB") + "</div></div>" +
-        "<h2>決賽</h2>" + UI.finalsHTML(state, "E");
-    } else if (tab === "J" || tab === "R") {
-      h = "<h2>場地進度</h2>" + UI.fieldsHTML(state, tab) + "<h2>預賽積分</h2>" + UI.standingsHTML(state, tab, { unit: !tv }) + "<h2>決賽</h2>" + UI.finalsHTML(state, tab);
-    } else if (tab === "L") {
-      h = "<h2>循跡賽</h2>" + UI.lineHTML(state, { unit: true });
-    } else {
-      h = "<h2>MR</h2>" + UI.mrHTML(state, { unit: true });
-    }
-    $("view").innerHTML = h;
+  function sumoView(T) {
+    const st = state, gk = T.id === "E" ? V.grp : T.groups[0];
+    const me = V.me[T.id] || "";
+    const meGk = me ? T.groups.find((g) => D.groups[g].codes.indexOf(me) >= 0) : null;
+    // 找我的隊伍
+    const opts = '<option value="">找我的隊伍（全部）</option>' + T.groups.map((g) => '<optgroup label="' + esc(D.groups[g].short) + '">' +
+      D.groups[g].codes.map((c) => '<option value="' + c + '"' + (c === me ? " selected" : "") + ">" + UI.teamText(st, c) + "</option>").join("") + "</optgroup>").join("");
+    $("bar").innerHTML = seg(SUBS, V.sub, "sub", "four") +
+      (T.id === "E" && V.sub !== "final" ? seg([["EA", "A 組"], ["EB", "B 組"]], V.grp, "grp") : "") +
+      (V.sub !== "final" ? '<select id="me" class="finder">' + opts + "</select>" : "") +
+      (me && meGk ? UI.myTeamHTML(st, meGk, me) : "");
+    const showMe = me && meGk === gk ? me : "";
+    if (V.sub === "rank") return "<h2>" + esc(D.groups[gk].name) + " 預賽積分</h2>" + UI.standingsHTML(st, gk, { unit: true, me: showMe });
+    if (V.sub === "sched") return "<h2>" + esc(D.groups[gk].name) + " 對戰表" + (showMe ? "（只看 " + esc(showMe) + "）" : "") + "</h2>" +
+      (me && meGk !== gk ? '<p class="note">你的隊伍在另一組，請切換上面的組別。</p>' : "") + UI.scheduleHTML(st, gk, { me: showMe });
+    if (V.sub === "field") return "<h2>" + esc(D.groups[gk].name) + " 各場地現在比賽</h2>" + UI.fieldsHTML(st, gk, { next: true });
+    return "<h2>" + UI.FAM_NAME[T.id] + " 決賽</h2>" + UI.finalsHTML(st, T.id);
   }
 
-  $("tabs").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-tab]");
+  // 大螢幕：排名＋場地＋決賽一起放
+  function tvView(T) {
+    $("bar").innerHTML = "";
+    if (!T.groups) return T.id === "L" ? "<h2>循跡賽</h2>" + UI.lineHTML(state, { unit: true }) : "<h2>MR</h2>" + UI.mrHTML(state, { unit: true });
+    const F = R.finals(D, state, T.id);
+    const started = F.SF1.red || F.SF1.rounds.length;
+    return '<div class="tvgrid">' + T.groups.map((g) => "<div><h2>" + esc(D.groups[g].name) + " 預賽積分</h2>" + UI.standingsHTML(state, g, {}) + "</div>").join("") +
+      "<div>" + (started ? "<h2>決賽</h2>" + UI.finalsHTML(state, T.id) : "") + "<h2>各場地現在比賽</h2>" + T.groups.map((g) => UI.fieldsHTML(state, g, { next: true })).join("") + "</div></div>";
+  }
+
+  function render() {
+    $("tabs").innerHTML = TABS.map((t) => '<button type="button" class="' + (t.id === V.tab ? "on" : "") + '" data-tab="' + t.id + '">' + t.label + "</button>").join("");
+    const T = TABS.find((t) => t.id === V.tab) || TABS[0];
+    if (tv) { $("view").innerHTML = tvView(T); return; }
+    if (T.groups) $("view").innerHTML = sumoView(T);
+    else { $("bar").innerHTML = ""; $("view").innerHTML = T.id === "L" ? "<h2>循跡賽</h2>" + UI.lineHTML(state, { unit: true }) : "<h2>MR</h2>" + UI.mrHTML(state, { unit: true }); }
+  }
+
+  document.body.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
     if (!b) return;
-    tab = b.dataset.tab;
-    history.replaceState(null, "", "?" + new URLSearchParams({ ...Object.fromEntries(qs), tab }).toString());
-    render();
+    if (b.dataset.tab) V.tab = b.dataset.tab;
+    else if (b.dataset.sub) V.sub = b.dataset.sub;
+    else if (b.dataset.grp) V.grp = b.dataset.grp;
+    else return;
+    saveV(); render();
+  });
+  document.body.addEventListener("change", (e) => {
+    if (e.target.id !== "me") return;
+    V.me[V.tab] = e.target.value;
+    const g = V.tab === "E" && e.target.value ? (e.target.value.startsWith("EA") ? "EA" : "EB") : null;
+    if (g) V.grp = g;
+    saveV(); render();
   });
 
   async function refresh() {
     try {
       const r = await API.load();
-      if (r && r.ok) { state = r.state || {}; $("updated").textContent = "更新於 " + UI.hhmmss(new Date()); render(); }
+      if (r && r.ok) { state = r.state || {}; $("updated").textContent = "更新於 " + UI.hhmmss(new Date()); if (document.activeElement && document.activeElement.id === "me") return; render(); }
       else $("updated").textContent = "讀取失敗，稍後自動重試";
     } catch (e) { $("updated").textContent = "連線中斷，稍後自動重試"; }
   }
-  // 每 25–35 秒更新一次（錯開時間，避免大家同時連線）；螢幕關掉或切到別的分頁就暫停
+  $("refreshBtn").addEventListener("click", () => { $("updated").textContent = "更新中…"; refresh(); });
+
+  // 手機每 15–25 秒更新（錯開時間）；大螢幕每 10 秒；螢幕關掉或切到別的分頁就暫停
   refresh();
-  (function loop() { setTimeout(async () => { if (document.visibilityState !== "hidden") await refresh(); loop(); }, 25000 + Math.random() * 10000); })();
+  (function loop() { setTimeout(async () => { if (document.visibilityState !== "hidden") await refresh(); loop(); }, tv ? 10000 : 15000 + Math.random() * 10000); })();
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refresh(); });
 
-  // 大螢幕：在同一個時段的分頁之間輪播
+  // 大螢幕：在同一個時段的分頁之間輪播（網址有 tab 就固定）
   if (tv && !qs.get("tab")) setInterval(() => {
     const list = TABS.filter((t) => t.sess === (pm() ? "pm" : "am"));
-    const i = list.findIndex((t) => t.id === tab);
-    tab = list[(i + 1) % list.length].id;
+    const i = list.findIndex((t) => t.id === V.tab);
+    V.tab = list[(i + 1) % list.length].id;
     render();
   }, 20000);
 })();

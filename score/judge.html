@@ -100,18 +100,9 @@
     let gk = null, field = null;
     if (sess === "am") { field = Number(f); gk = ["EA", "EB", "J"].find((g) => D.groups[g].fields.indexOf(field) >= 0); }
     else if (f[0] === "R") { gk = "R"; field = Number(f.slice(1)); }
-    if (gk) {
-      const ms = D.schedule[gk].filter((m) => m[1] === field).sort((a, b) => a[0] - b[0]);
-      const now = ms.find((m) => !R.isDone(R.matchResult(st, gk, m)));
-      const fam = gk === "EA" || gk === "EB" ? "E" : gk;
-      const fins = ["SF1", "SF2", "F"].filter((x) => ((st["final:" + fam + ":" + x] || {}).payload || {}).field === s);
-      return (fins.length ? "<h2>決賽</h2>" + fins.map((x) => UI.finalEditHTML(st, fam, x)).join("") : "") +
-        "<h2>" + esc(D.groups[gk].short) + "｜場地 " + field + " 預賽</h2>" +
-        '<p class="note">' + ms.filter((m) => R.isDone(R.matchResult(st, gk, m))).length + " / " + ms.length + " 場完成。每回合點結果，3 回合都點完按「送出」。</p>" +
-        ms.map((m) => UI.sumoMatchHTML(st, gk, m, { openPending: m === now })).join("");
-    }
-    if (f === "MR") return "<h2>MR 計分</h2>" + UI.mrEditorHTML(st);
-    return "<h2>循跡計時</h2>" + UI.lineEditorHTML(st);
+    if (gk) return UI.judgeFieldHTML(st, gk, field, s);
+    if (f === "MR") return "<h2>MR 計分</h2>" + UI.mrEditorHTML(st, { judge: true });
+    return "<h2>循跡計時</h2>" + UI.lineEditorHTML(st, { judge: true });
   }
 
   function render() {

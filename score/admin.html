@@ -87,6 +87,7 @@
     return chips([["E", "國小自動組"], ["J", "國高中自動組"], ["R", "遙控組"]], drawPool, "pool") +
       "<h2>" + POOL_NAME[drawPool] + '　<span class="mute small">已登錄 ' + n + " / " + teams.length + "</span></h2>" +
       '<p class="note">隊伍抽到籤後，在該隊選它的代號（選了就存）。選錯直接改選；代號被別隊用了會先問你。</p>' +
+      (API.demo ? '<p class="noprint"><button type="button" class="ghost small" id="demoDraw">示範：三組一鍵完成抽籤（隨機）</button></p>' : "") +
       '<table class="tbl"><thead><tr><th>隊伍</th><th>學校／單位</th><th style="width:150px">抽到的代號</th></tr></thead><tbody>' +
       teams.map((t) => "<tr><td>" + UI.plainTeam(t) + (t.level && drawPool !== "E" ? ' <span class="tag">' + t.level + "</span>" : "") + "</td><td class='mute'>" + esc(t.unit) + "</td><td>" +
         '<select data-draw="' + t.id + '"><option value="">—</option>' + codes.map((c) => {
@@ -235,6 +236,14 @@
         slots[el.dataset.slot] = ids;
       }
       saveAndRender([{ key: "assign", payload: { slots } }]);
+    } else if (b.id === "demoDraw") {
+      const items = [];
+      ["E", "J", "R"].forEach((pool) => {
+        const codes = [].concat(...POOLS[pool].map((g) => D.groups[g].codes));
+        const teams = D.teams[pool].map((t) => t.id).sort(() => Math.random() - 0.5);
+        codes.forEach((c, i) => items.push({ key: "draw:" + c, payload: teams[i] ? { team: teams[i] } : null }));
+      });
+      saveAndRender(items);
     } else if (b.id === "assignReset") {
       if (confirm("恢復預設的場地指派？")) saveAndRender([{ key: "assign", payload: null }]);
     }
