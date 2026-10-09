@@ -409,22 +409,24 @@ window.GRG_UI = (function () {
         if (LE.t.length && !confirm("重新計時會清掉目前的圈數秒數，確定？")) return;
         LE.t = []; LE.done = false; LE.run = true; LE.t0 = performance.now(); LE.dirty = true; ctx.render();
       } else if (act === "le-lap") {
-        LE.t.push(Math.round((performance.now() - LE.t0) / 10) / 100);
-        const set = (st["lineset"] || {}).payload;
-        if (set && LE.t.length >= set.laps) { LE.run = false; LE.done = true; }
+        // 圈數上限：計分台設定的圈數，沒設定就是規則最多 5 圈；到上限自動停錶，多按不會多記
+        const set = (st["lineset"] || {}).payload, max = set ? set.laps : 5;
+        if (LE.t.length < max) LE.t.push(Math.round((performance.now() - LE.t0) / 10) / 100);
+        if (LE.t.length >= max) { LE.run = false; LE.done = !!set; }
         ctx.render();
       } else if (act === "le-stop") { LE.run = false; LE.done = false; ctx.render(); }
       else if (act === "le-clear") { LE.t = []; LE.done = false; LE.run = false; LE.dirty = true; ctx.render(); }
       else if (act === "le-send") {
         const k = "line:" + LE.team + ":" + LE.att;
-        const t = LE.t.filter((x) => x > 0).map((x) => Math.round(x * 100) / 100);
+        const set = (st["lineset"] || {}).payload, max = set ? set.laps : 5;
+        const t = LE.t.filter((x) => x > 0).slice(0, max).map((x) => Math.round(x * 100) / 100);
         done(ctx.save([{ key: k, payload: { t, done: LE.done } }]), () => { LE.dirty = false; });
       }
       // MR
       else if (act === "me-att") { ME.att = Number(b.dataset.v); meLoad(st); ctx.render(); }
       else if (act === "me-inc") {
         const k = b.dataset.k;
-        ME.c[k] = Math.max(0, (ME.c[k] || 0) + Number(b.dataset.d));
+        ME.c[k] = Math.min(99, Math.max(0, (ME.c[k] || 0) + Number(b.dataset.d)));
         if (!ME.c[k]) delete ME.c[k];
         ME.dirty = true; ctx.render();
       } else if (act === "me-start") { ME.run = true; ME.t0 = performance.now(); ME.dirty = true; ctx.render(); }
