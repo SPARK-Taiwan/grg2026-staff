@@ -39,8 +39,9 @@ for key, t in zip(keys, team_tables):
     teams[key] = rows
 assert [len(teams[k]) for k in keys] == [21, 17, 14, 9, 8], [len(teams[k]) for k in keys]
 
-# 主辦調整的出賽順序（和公告表格不同時寫在這裡）：MR 的 JGJHS02 排在 JGJHS03 前面（10/9）
-ORDER = {"M": ["這次一定行", "再次同一隊", "程風破浪", "合作無間", "KCIS ARK", "JGJHS", "JGJHS02", "JGJHS03"]}
+# 主辦調整的出賽順序（和公告表格不同時寫在這裡）（10/9）：MR 的 JGJHS02 排在 JGJHS03 前面；循跡高中組依尾碼 01→02→03
+ORDER = {"M": ["這次一定行", "再次同一隊", "程風破浪", "合作無間", "KCIS ARK", "JGJHS", "JGJHS02", "JGJHS03"],
+         "L": ["福克斯好棒棒", "福克斯好棒棒02", "福克斯好棒棒03", "六和酷比6", "六和酷比7", "六和酷比8", "桃園好棒棒01", "桃園好棒棒02", "治平好棒棒03"]}
 for key, names in ORDER.items():
     by = {t["name"]: t for t in teams[key]}
     assert sorted(by) == sorted(names), (key, sorted(by))
