@@ -199,7 +199,7 @@ window.GRG_UI = (function () {
   }
   function mrEditorHTML(st, o) {
     o = o || {};
-    let h = '<div class="card editor">' + teamGrid(st, ["MR3", "MR2"].map((c) => [c, D.teams.M.filter((t) => t.mr === c)]), "mr", ME.team, "me-pick");
+    let h = '<div class="card editor">' + teamGrid(st, ["MR2", "MR3"].map((c) => [c, D.teams.M.filter((t) => t.mr === c)]), "mr", ME.team, "me-pick");
     if (!ME.team) return h + '<p class="note">點上面的隊伍開始計分。</p></div>';
     const mt = D.teams.M.find((t) => t.id === ME.team);
     const ev = R.mrEval({ c: ME.c, time: ME.time === "" ? 120 : Number(ME.time) });
