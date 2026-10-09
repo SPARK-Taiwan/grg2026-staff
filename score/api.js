@@ -16,7 +16,9 @@ window.GRG_API = (function () {
   // ---------- 示範模式 ----------
   const DEMO = { staff: {}, claims: {} };
   for (let i = 1; i <= 18; i++) { DEMO.staff["示範裁判" + pad(i)] = "09000000" + pad(i); DEMO.claims[i] = "示範裁判" + pad(i); }
-  const demoState = () => store.get("grgScoreDemo", {});
+  // 示範裁判07 多負責 MR，一個帳號就能試相撲（場地4）、循跡1、MR 三種輸入
+  const DEMO_ASSIGN = { kind: "assign", payload: { slots: { "pm:MR": [4, 5, 6, 17, 7] } }, by: "示範", src: "admin", time: "" };
+  const demoState = () => { const s = store.get("grgScoreDemo", {}); if (!s.assign) s.assign = DEMO_ASSIGN; return s; };
   function demoCall(req) {
     let who;
     if (req.admin != null) {
