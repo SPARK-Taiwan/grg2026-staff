@@ -236,3 +236,10 @@ details.match .sv { font-family: inherit; font-weight: 400; font-size: 14px; }
 
 /* 手機：上方分頁換行，不要被切掉 */
 @media (max-width: 560px) { .tabs { flex-wrap: wrap; overflow: visible; } .tabs button { padding: 5px 11px; font-size: 14px; } }
+
+/* MR：步驟標題 */
+.steph { margin: 14px 0 6px; font-weight: 700; color: var(--navy); font-size: 16px; }
+.steph b { display: inline-block; margin-right: 6px; }
+.item.has .cv { color: var(--ok); }
+button.cnt:disabled { opacity: .3; }
+.tpicked { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #eef3fb; border: 2px solid var(--navy); border-radius: 10px; padding: 8px 12px; margin: 4px 0 8px; font-size: 16px; }

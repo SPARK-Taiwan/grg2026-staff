@@ -38,6 +38,7 @@
       case "mr":
         if (parts.length !== 3 || ["1", "2"].indexOf(parts[2]) < 0) return "MR 場次錯誤";
         if (!isObj(p.c) || !Object.keys(p.c).every((k) => MR_KEYS[k] && isInt(p.c[k], 0, 99))) return "MR 計分項目錯誤";
+        if (!R.mrValid(p.c)) return "MR 完成數量超過規則上限";
         return p.time == null || isNum(p.time, 0, 120) ? "" : "MR 時間 0–120 秒";
       case "assign":
         return isObj(p.slots) && Object.keys(p.slots).every((k) => Array.isArray(p.slots[k]) && p.slots[k].every((x) => isInt(x, 1, 99))) ? "" : "場地指派格式錯誤";

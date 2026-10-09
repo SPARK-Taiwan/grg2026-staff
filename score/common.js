@@ -150,7 +150,12 @@ window.GRG_UI = (function () {
     LE.t = p ? p.t.slice() : []; LE.done = p ? !!p.done : false; LE.dirty = false;
   }
   // 隊伍按鈕（循跡、MR 共用）：顯示這隊第 1、2 次是否已有成績
+  const GRID_OPEN = {};                 // 選好隊伍後收起隊伍按鈕，按「換隊伍」再展開
   function teamGrid(st, list, kind, cur, act) {
+    if (cur && !GRID_OPEN[kind]) {
+      const t = [].concat(...list.map((x) => x[1])).find((x) => x.id === cur);
+      return '<div class="tpicked"><span><b class="code">' + esc(cur) + "</b> " + esc(t ? t.name : "") + '</span><button type="button" class="ghost small" data-act="tg-open" data-v="' + kind + '">換隊伍</button></div>';
+    }
     return '<div class="tgrid">' + list.map(([label, teams]) => '<p class="tglabel">' + label + '</p>' + teams.map((t) => {
       const n = [1, 2].filter((a) => st[kind + ":" + t.id + ":" + a]).length;
       return '<button type="button" class="tbtn' + (cur === t.id ? " on" : "") + (n === 2 ? " full" : "") + '" data-act="' + act + '" data-v="' + t.id + '"><b class="code">' + esc(t.id) + "</b> " + esc(t.name) +
@@ -198,14 +203,28 @@ window.GRG_UI = (function () {
     if (!ME.team) return h + '<p class="note">點上面的隊伍開始計分。</p></div>';
     const mt = D.teams.M.find((t) => t.id === ME.team);
     const ev = R.mrEval({ c: ME.c, time: ME.time === "" ? 120 : Number(ME.time) });
+    const timed = ME.time !== "" && !ME.run;
+    const step = (n, t) => '<p class="steph"><b>' + n + "</b>" + t + "</p>";
     h += '<div class="seg">' + [1, 2].map((a) => '<button type="button" class="' + (ME.att === a ? "on" : "") + '" data-act="me-att" data-v="' + a + '">第 ' + a + " 次" + (st["mr:" + ME.team + ":" + a] ? " ✓" : "") + "</button>").join("") + "</div>" +
-      '<div class="items">' + R.MR_ITEMS.map(([k, label, pts]) => '<div class="item"><span class="il">' + esc(label) + ' <small class="mute">' + pts + ' 分</small></span><button type="button" class="ghost cnt" data-act="me-inc" data-k="' + k + '" data-d="-1">−</button><b class="cv">' + (ME.c[k] || 0) + '</b><button type="button" class="ghost cnt" data-act="me-inc" data-k="' + k + '" data-d="1">＋</button></div>').join("") + "</div>" +
-      '<div class="watch small"><span class="mw-time">' + (ME.run ? "" : ME.time === "" ? "0.00" : f2(ME.time)) + '</span><small>秒</small></div><div class="btnrow">' +
-      (ME.run ? '<button type="button" class="big stop" data-act="me-stop">停止計時</button>' : '<button type="button" class="big go" data-act="me-start">開始計時</button>') + "</div>" +
-      '<label class="lbl inline">完成時間（秒，最多 120）<input type="number" inputmode="decimal" step="0.01" min="0" max="120" data-act="me-time" value="' + (ME.time === "" ? "" : f2(ME.time)) + '"></label>' +
-      '<p class="eval">總分 <b>' + ev.score + "</b> 分，時間 " + ev.time + " 秒" + (ev.score === 0 ? "（0 分記 120 秒）" : "") + "</p>" +
-      (o.judge ? confirmSend(mt, "me-send", ME.dirty && !ME.run, ME.att) + '<div class="foot"><button type="button" class="ghost small" data-act="me-clear">清空重來</button></div></div>'
-        : '<div class="foot"><button type="button" class="ghost small" data-act="me-clear">清空</button><button type="button" data-act="me-send"' + (ME.dirty && !ME.run ? "" : " disabled") + ">送出第 " + ME.att + " 次成績</button></div></div>");
+      // ① 計時：最多 120 秒，到 120 自動停
+      step("①", "計時（每場最多 120 秒，到 120 秒自動停）") +
+      '<div class="watch"><span class="mw-time">' + (ME.run ? "" : ME.time === "" ? "0.00" : f2(ME.time)) + '</span><small>秒</small></div><div class="btnrow">' +
+      (ME.run ? '<button type="button" class="big stop" data-act="me-stop">停止計時（隊伍喊 STOP／機器人停止）</button>'
+              : '<button type="button" class="big go" data-act="me-start">' + (ME.time === "" ? "開始計時（GRG Go!）" : "重新計時") + "</button>") + "</div>" +
+      (timed ? '<label class="lbl inline small">時間有誤可修正（秒）<input type="number" inputmode="decimal" step="0.01" min="0" max="120" data-act="me-time" value="' + f2(ME.time) + '"></label>' : "");
+    // ② 完成數量：停錶後才能輸入（計分台不限）；超過規則上限的 ＋ 會鎖住
+    if (timed || !o.judge) {
+      h += step("②", "完成數量（依場地最後狀態計分）") + '<div class="items">' + R.MR_ITEMS.map(([k, label, pts]) => {
+        const v = ME.c[k] || 0, max = R.mrMax(ME.c, k);
+        return '<div class="item' + (v ? " has" : "") + '"><span class="il">' + esc(label) + ' <small class="mute">' + pts + " 分・最多 " + max + '</small></span><button type="button" class="ghost cnt" data-act="me-inc" data-k="' + k + '" data-d="-1"' + (v ? "" : " disabled") + '>−</button><b class="cv">' + v +
+          '</b><button type="button" class="ghost cnt" data-act="me-inc" data-k="' + k + '" data-d="1"' + (v < max ? "" : " disabled") + ">＋</button></div>";
+      }).join("") + "</div>" +
+        '<p class="eval">總分 <b>' + ev.score + "</b> 分，時間 " + ev.time + " 秒" + (ev.score === 0 ? "（0 分記 120 秒）" : "") + "</p>";
+    } else h += '<p class="note">停止計時後，這裡會出現完成數量讓你輸入。</p>';
+    // ③ 選手確認
+    const ready = ME.dirty && timed;
+    h += o.judge ? (timed ? step("③", "請選手確認") + confirmSend(mt, "me-send", ready, ME.att) : "") + '<div class="foot"><button type="button" class="ghost small" data-act="me-clear">清空重來</button></div></div>'
+      : '<div class="foot"><button type="button" class="ghost small" data-act="me-clear">清空</button><button type="button" data-act="me-send"' + (ME.dirty && !ME.run ? "" : " disabled") + ">送出第 " + ME.att + " 次成績</button></div></div>";
     return h;
   }
 
@@ -350,12 +369,15 @@ window.GRG_UI = (function () {
   setInterval(() => {
     const now = performance.now();
     if (LE.run) document.querySelectorAll(".lw-time").forEach((el) => { el.textContent = f2((now - LE.t0) / 1000); });
+    if (ME.run && (now - ME.t0) / 1000 >= 120) { ME.run = false; ME.time = 120; if (lastCtx) { lastCtx.toast("120 秒時間到，請輸入完成數量", true); lastCtx.render(); } }
     if (ME.run) document.querySelectorAll(".mw-time").forEach((el) => { el.textContent = f2((now - ME.t0) / 1000); });
   }, 50);
 
   // ---------- 事件 ----------
   // ctx：{ state(), save(items) → Promise<{ok, message}>, render(), toast(msg, ok), admin }
+  let lastCtx = null;
   function bindEditors(root, ctx) {
+    lastCtx = ctx;
     const keyOf = (el) => { const c = el.closest("[data-key]"); return c ? c.dataset.key : null; };
     const done = (p, after) => p.then((r) => { if (r && r.ok) after(); ctx.toast(r.message, r.ok); ctx.render(); });
 
@@ -394,11 +416,12 @@ window.GRG_UI = (function () {
         done(ctx.save([{ key, payload }]), () => { delete drafts[key]; });
       }
       // 隊伍按鈕
+      else if (act === "tg-open") { GRID_OPEN[b.dataset.v] = true; ctx.render(); }
       else if (act === "le-pick" || act === "me-pick") {
         const E = act === "le-pick" ? LE : ME, kind = act === "le-pick" ? "line" : "mr";
-        if (E.team === b.dataset.v) return;
+        if (E.team === b.dataset.v) { GRID_OPEN[kind] = false; ctx.render(); return; }
         if (E.dirty && !confirm("目前的成績還沒送出，確定換隊伍？")) return;
-        E.team = b.dataset.v; E.run = false;
+        E.team = b.dataset.v; E.run = false; GRID_OPEN[kind] = false;
         E.att = st[kind + ":" + E.team + ":1"] && !st[kind + ":" + E.team + ":2"] ? 2 : 1;
         if (kind === "line") leLoad(st); else meLoad(st);
         ctx.render();
@@ -426,10 +449,15 @@ window.GRG_UI = (function () {
       else if (act === "me-att") { ME.att = Number(b.dataset.v); meLoad(st); ctx.render(); }
       else if (act === "me-inc") {
         const k = b.dataset.k;
-        ME.c[k] = Math.min(99, Math.max(0, (ME.c[k] || 0) + Number(b.dataset.d)));
-        if (!ME.c[k]) delete ME.c[k];
+        const nv = Math.max(0, (ME.c[k] || 0) + Number(b.dataset.d));
+        if (nv > (ME.c[k] || 0) && nv > R.mrMax(ME.c, k)) return;
+        ME.c[k] = nv;
+        ME.c = R.mrClamp(ME.c);
         ME.dirty = true; ctx.render();
-      } else if (act === "me-start") { ME.run = true; ME.t0 = performance.now(); ME.dirty = true; ctx.render(); }
+      } else if (act === "me-start") {
+        if (ME.time !== "" && !confirm("重新計時會清掉目前的時間，確定？")) return;
+        ME.run = true; ME.time = ""; ME.t0 = performance.now(); ME.dirty = true; ctx.render();
+      }
       else if (act === "me-stop") { ME.run = false; ME.time = Math.min(120, Math.round((performance.now() - ME.t0) / 10) / 100); ctx.render(); }
       else if (act === "me-clear") { ME.c = {}; ME.time = ""; ME.run = false; ME.dirty = true; ctx.render(); }
       else if (act === "me-send") {

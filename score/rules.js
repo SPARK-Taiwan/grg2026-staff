@@ -238,6 +238,27 @@
     ["P", "粉色大方塊堆疊（分類）", 40], ["Y", "黃色大方塊堆疊（照明控制）", 30], ["X", "無效堆疊（不同顏色）", 20],
     ["w", "白色小方塊層", 50], ["o", "橘色小方塊層", 40], ["u", "紫色小方塊層", 30], ["r", "紅色小方塊層", 20], ["y", "黃色小方塊層", 20], ["m", "混合顏色層", 15],
   ];
+  // 數量上限（由 MR 規則推出）：每色大方塊 2 個且只能移動其中 1 個 → 每色有效堆疊最多 1；大方塊共 10 個 → 有效＋無效堆疊最多 5；
+  // 每個有效堆疊最多 2 層小方塊（同色層要有該色的有效堆疊；混合層放在任何有效堆疊上）
+  const MR_STACKS = ["W", "G", "B", "P", "Y"];
+  const MR_LAYER = { w: "W", o: "G", u: "B", r: "P", y: "Y" };
+  function mrMax(c, k) {
+    const v = (x) => Number(c[x]) || 0;
+    const valid = MR_STACKS.reduce((s, x) => s + Math.min(1, v(x)), 0);
+    const colored = Object.keys(MR_LAYER).reduce((s, x) => s + v(x), 0);
+    if (MR_STACKS.indexOf(k) >= 0) return Math.min(1, v(k) + Math.max(0, 5 - valid - v("X")));
+    if (k === "X") return Math.max(0, 5 - valid);
+    if (MR_LAYER[k]) return Math.max(0, Math.min(2 * Math.min(1, v(MR_LAYER[k])), 2 * valid - (colored - v(k)) - v("m")));
+    if (k === "m") return Math.max(0, 2 * valid - colored);
+    return 0;
+  }
+  function mrValid(c) { return MR_ITEMS.every(([k]) => (Number(c[k]) || 0) <= mrMax(c, k)); }
+  // 減少堆疊後，把超過上限的層數一起降下來
+  function mrClamp(c) {
+    const out = Object.assign({}, c);
+    for (let pass = 0; pass < 2; pass++) MR_ITEMS.forEach(([k]) => { if (out[k] > mrMax(out, k)) out[k] = mrMax(out, k); if (!out[k]) delete out[k]; });
+    return out;
+  }
   function mrEval(p) {
     if (!p || !p.c) return null;
     const score = MR_ITEMS.reduce((s, [k, , v]) => s + (Number(p.c[k]) || 0) * v, 0);
@@ -268,7 +289,7 @@
 
   const API = { RANKS, TOTAL_NAMES, defaultSlots, slotsOf, slotLabel, sumoSlot, teamById, teamOfCode, sumoPts, matchKey, matchResult,
     isDone, groupStandings, tiesNeedingWeight, fieldQueue, FAMILY, seeds, finals, boWinner, sumoAwards, lineEval, lineCmp,
-    lineRanking, lineAwards, MR_ITEMS, mrEval, mrCmp, mrRanking, mrAwards };
+    lineRanking, lineAwards, MR_ITEMS, mrMax, mrValid, mrClamp, mrEval, mrCmp, mrRanking, mrAwards };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   else root.GRG_RULES = API;
 })(typeof window !== "undefined" ? window : globalThis);

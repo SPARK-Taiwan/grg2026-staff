@@ -159,6 +159,23 @@ ok("MR：分數、同分比時間、0 分記 120 秒、頒獎", () => {
   assert.deepStrictEqual(aw.filter((x) => x.cat.includes("MR2")).map((x) => x.title), ["冠軍"]);
 });
 
+ok("MR 數量上限（依規則推算）", () => {
+  const m = (c, k) => R.mrMax(c, k);
+  assert.strictEqual(m({}, "W"), 1); assert.strictEqual(m({ W: 1 }, "W"), 1);           // 每色有效堆疊最多 1
+  assert.strictEqual(m({}, "X"), 5); assert.strictEqual(m({ W: 1, G: 1 }, "X"), 3);    // 有效＋無效最多 5
+  assert.strictEqual(m({ X: 5 }, "W"), 0);                                               // 大方塊用完了
+  assert.strictEqual(m({}, "w"), 0); assert.strictEqual(m({ W: 1 }, "w"), 2);            // 同色層要有該色堆疊、最多 2 層
+  assert.strictEqual(m({ W: 1 }, "o"), 0);
+  assert.strictEqual(m({ W: 1, w: 1 }, "m"), 1); assert.strictEqual(m({ W: 1, m: 1 }, "w"), 1); // 每個堆疊共 2 層
+  const full = { W: 1, G: 1, B: 1, P: 1, Y: 1, w: 2, o: 2, u: 2, r: 2, y: 2 };
+  assert.ok(R.mrValid(full)); assert.strictEqual(R.mrEval({ c: full, time: 100 }).score, 570);
+  assert.ok(!R.mrValid({ W: 2 })); assert.ok(!R.mrValid({ w: 1 })); assert.ok(!R.mrValid({ W: 1, X: 5 })); assert.ok(!R.mrValid({ W: 1, w: 2, m: 1 }));
+  assert.deepStrictEqual(R.mrClamp({ W: 0, w: 2, m: 1, G: 1 }), { G: 1, m: 1 });        // 拿掉白色堆疊 → 白色層歸零
+  const S = require(path.join(dir, "server.js"));
+  assert.strictEqual(S.validate("mr", ["mr", "M01", "1"], { c: { G: 2 }, time: 60 }), "MR 完成數量超過規則上限");
+  assert.strictEqual(S.validate("mr", ["mr", "M01", "1"], { c: full, time: 60 }), "");
+});
+
 ok("場地指派：預設與覆蓋", () => {
   const s = R.slotsOf({});
   assert.deepStrictEqual(s["am:1"], [4]); assert.deepStrictEqual(s["pm:R1"], [11]); assert.deepStrictEqual(s["pm:R6"], [16]);
