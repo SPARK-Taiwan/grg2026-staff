@@ -30,9 +30,9 @@ const ss = { getSheetByName: (n) => sheets[n] || null, insertSheet: (n) => (shee
 const cacheStore = {}, props = {};
 let cacheGets = 0;
 const ctx = {
-  SpreadsheetApp: { getActiveSpreadsheet: () => ss },
+  SpreadsheetApp: { getActiveSpreadsheet: () => ss, flush: () => {} },
   CacheService: { getScriptCache: () => ({ get: (k) => { cacheGets++; return k in cacheStore ? cacheStore[k] : null; }, put: (k, v) => { cacheStore[k] = String(v); }, remove: (k) => { delete cacheStore[k]; } }) },
-  LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+  LockService: { getScriptLock: () => ({ waitLock: () => {}, tryLock: () => !ctx.lockBusy, releaseLock: () => {} }) },
   PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = v; } }) },
   ContentService: { createTextOutput: (t) => ({ text: t, setMimeType() { return this; } }), MimeType: { JSON: "json" } },
   Logger: { log: (m) => { ctx.lastLog = m; } },
@@ -150,6 +150,20 @@ ok("GET ?score=1 有快取、寫入後立即更新", () => {
   assert.ok(cacheStore.score_get_v1);
   post({ action: "score.put", admin: PW(), items: [{ key: "weight:EA01", payload: { g: 950 } }] });
   assert.strictEqual(get({ score: "1" }).state["weight:EA01"].payload.g, 950);
+});
+
+ok("排隊太久（拿不到鎖）回覆系統忙碌、不寫入", () => {
+  ctx.lockBusy = true;
+  const r = post({ action: "score.put", admin: PW(), items: [{ key: "weight:EA02", payload: { g: 1 } }] });
+  ctx.lockBusy = false;
+  assert.ok(!r.ok && r.busy && r.message.includes("忙碌"));
+  clearCache();
+  assert.ok(!get({ score: "1" }).state["weight:EA02"]);
+});
+
+ok("紀錄分頁每筆都有寫（含被拒絕的）", () => {
+  const rows = sheets["計分紀錄"].getRange(2, 1, sheets["計分紀錄"].getLastRow() - 1, 5).getValues();
+  assert.ok(rows.length >= 20 && rows.some((r) => String(r[4]).startsWith("拒絕")) && rows.some((r) => r[4] === "成功"));
 });
 
 ok("計分台密碼錯 10 次鎖住", () => {

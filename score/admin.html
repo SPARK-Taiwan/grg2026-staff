@@ -65,7 +65,7 @@
   async function save(items) {
     try {
       const r = await API.post({ action: "score.put", admin: pw, items });
-      if (!r.ok) return { ok: false, message: r.message };
+      if (!r.ok) return { ok: false, message: r.busy ? "系統忙碌，沒有儲存，請再按一次" : r.message };
       server = r;
       const bad = (r.results || []).filter((x) => !x.ok);
       return bad.length ? { ok: false, message: bad.map((x) => x.message).join("、") } : { ok: true, message: "已儲存" };
@@ -260,6 +260,7 @@
   UI.bindEditors($("view"), { state, save, render, toast: UI.toast, admin: true });
 
   async function refresh() {
+    if (document.visibilityState === "hidden") return;
     try {
       const r = await API.load();
       if (r && r.ok) { server = r; $("updated").textContent = "更新 " + UI.hhmmss(new Date()); }
@@ -269,6 +270,7 @@
   show();
   refresh();
   setInterval(refresh, 15000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refresh(); });
 })();
 </script>
 </body>

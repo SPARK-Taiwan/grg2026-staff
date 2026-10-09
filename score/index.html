@@ -17,7 +17,7 @@
   </div>
 </header>
 <main class="wrap">
-  <div class="status"><span id="updated">讀取中…</span><span>每 15 秒自動更新</span></div>
+  <div class="status"><span id="updated">讀取中…</span><span>每 30 秒自動更新</span></div>
   <div id="view"></div>
 </main>
 <script src="../config.js"></script>
@@ -75,8 +75,10 @@
       else $("updated").textContent = "讀取失敗，稍後自動重試";
     } catch (e) { $("updated").textContent = "連線中斷，稍後自動重試"; }
   }
+  // 每 25–35 秒更新一次（錯開時間，避免大家同時連線）；螢幕關掉或切到別的分頁就暫停
   refresh();
-  setInterval(refresh, 15000);
+  (function loop() { setTimeout(async () => { if (document.visibilityState !== "hidden") await refresh(); loop(); }, 25000 + Math.random() * 10000); })();
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refresh(); });
 
   // 大螢幕：在同一個時段的分頁之間輪播
   if (tv && !qs.get("tab")) setInterval(() => {

@@ -116,6 +116,7 @@
 
   function render() {
     if (!auth) return showLogin();
+    $("login").hidden = true; $("main").hidden = false;   // 已登入過（重新整理、手機重開）直接顯示主畫面
     const st = state(), roles = myRoles(), slots = mySlots();
     $("who").textContent = auth.nickname;
     $("roleText").textContent = roles.length ? "崗位 " + roles.map((r) => "#" + UI.pad(r)).join("、") : "";
@@ -151,6 +152,7 @@
   UI.bindEditors($("view"), { state, save, render, toast: UI.toast, admin: false });
 
   async function refresh() {
+    if (document.visibilityState === "hidden" && !API.queue().length) return;   // 螢幕關掉時不讀取
     if (API.queue().length && auth) { const r = await API.flush(auth); if (r.data) server = r.data; }
     try {
       const r = await API.load();
@@ -163,6 +165,7 @@
   refresh();
   setInterval(refresh, 15000);
   window.addEventListener("online", refresh);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refresh(); });
 })();
 </script>
 </body>

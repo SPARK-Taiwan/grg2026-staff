@@ -56,7 +56,8 @@ function scoreLog_(who, items, results) {
     var res = results[i] || {};
     return [now, by, String(it.key || ''), it.payload === null ? '（刪除）' : JSON.stringify(it.payload), res.ok ? '成功' : '拒絕：' + (res.message || '')];
   });
-  if (rows.length) { var sh = scoreLogSheet_(); sh.getRange(sh.getLastRow() + 1, 1, rows.length, 5).setValues(rows); }
+  var sh = scoreLogSheet_();
+  rows.forEach(function (r) { sh.appendRow(r); });   // appendRow 多人同時寫也不會互相蓋掉
 }
 
 function scoreResponse_(state) {
@@ -106,20 +107,24 @@ function scorePost_(req) {
   if (req.action === 'score.login') return json_({ ok: true, nick: who.nick || '', roles: who.roles || [], admin: !!who.admin });
   if (req.action !== 'score.put') return json_({ ok: false, message: '未知的動作' });
 
+  // 排隊只包「讀成績 → 檢查 → 寫成績 → 更新快取」；名單、認領先讀好，紀錄排完隊再寫，讓每個人排隊時間最短
+  var base = { claims: readClaims_(), nicknames: readStaff_().order };
   var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  if (!lock.tryLock(28000)) return json_({ ok: false, busy: true, message: '系統忙碌，成績已存在手機，稍後自動重送' });
+  var out, resp;
   try {
     var db = scoreRead_();
-    var out = GRG_SERVER.apply(db.state, req, who, new Date().toISOString());
+    out = GRG_SERVER.apply(db.state, req, who, new Date().toISOString());
     scoreWrite_(db, out.changes);
-    scoreLog_(who, (req.items || []).slice(0, 60), out.results);
-    var resp = scoreResponse_(out.state);
+    SpreadsheetApp.flush();
+    resp = { ok: true, now: new Date().toISOString(), state: out.state, claims: base.claims, nicknames: base.nicknames };
     scoreCachePut_(JSON.stringify(resp));
-    resp.results = out.results;
-    return json_(resp);
   } finally {
     lock.releaseLock();
   }
+  try { scoreLog_(who, (req.items || []).slice(0, 60), out.results); } catch (e) {}   // 紀錄失敗不影響成績
+  resp.results = out.results;
+  return json_(resp);
 }
 
 // 第一次使用（或要看計分台密碼）：選 scoreSetup 執行一次，到「執行作業紀錄」看密碼
