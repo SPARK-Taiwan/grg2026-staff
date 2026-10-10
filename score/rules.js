@@ -8,6 +8,8 @@
 //   line:<隊伍id>:<1|2>         {t:[累計秒...], done}               循跡每次的分圈累計秒數
 //   mr:<隊伍id>:<1|2>           {c:{...}, time}   MR 每次的計分項目數量與時間
 //   assign                      {slots:{...}}     場地指派（覆蓋預設）
+//   absent:<代號>               {on:true}         棄權／未到：沒有成績的場次一律判對手 3:0
+//   回合結果另有 XR／XB：對手逾時未進場（規則 2.3.11），判紅／藍方得分
 (function (root) {
   "use strict";
 
@@ -54,14 +56,23 @@
   // ---------- 相撲預賽 ----------
   function sumoPts(r) {
     const p = { red: 0, blue: 0 };
-    (r || []).forEach((x) => { if (x === "R" || x === "TR") p.red++; else if (x === "B" || x === "TB") p.blue++; });
+    (r || []).forEach((x) => { if (x === "R" || x === "TR" || x === "XR") p.red++; else if (x === "B" || x === "TB" || x === "XB") p.blue++; });
     return p;
   }
   function matchKey(gk, m) { return "sumo:" + gk + ":" + m[0] + ":" + m[1]; }
+  function isAbsent(state, code) { const a = state["absent:" + code]; return !!(a && a.payload && a.payload.on); }
+  function recorded(state, gk, m) { const s = state[matchKey(gk, m)]; return s && s.payload && Array.isArray(s.payload.r) ? s.payload.r : null; }
+  // 有輸入成績就用成績；沒有成績、但有一方棄權 → 判對手 3:0（雙方都棄權 0:0）
   function matchResult(state, gk, m) {
-    const s = state[matchKey(gk, m)];
-    return s && s.payload && Array.isArray(s.payload.r) ? s.payload.r : null;
+    const r = recorded(state, gk, m);
+    if (r) return r;
+    const ar = isAbsent(state, m[2]), ab = isAbsent(state, m[3]);
+    if (ar && ab) return ["T0", "T0", "T0"];
+    if (ar) return ["XB", "XB", "XB"];
+    if (ab) return ["XR", "XR", "XR"];
+    return null;
   }
+  function isForfeit(state, gk, m) { return !recorded(state, gk, m) && (isAbsent(state, m[2]) || isAbsent(state, m[3])); }
   function isDone(r) { return Array.isArray(r) && r.length === 3 && r.every(Boolean); }
 
   function groupStandings(D, state, gk) {
@@ -148,7 +159,7 @@
   }
   function boWinner(rounds, red, blue) {
     let r = 0, b = 0;
-    (rounds || []).forEach((x) => { if (x === "R") r++; else if (x === "B") b++; });
+    (rounds || []).forEach((x) => { if (x === "R" || x === "XR") r++; else if (x === "B" || x === "XB") b++; });
     return { r, b, winner: r >= 2 ? red : b >= 2 ? blue : null, loser: r >= 2 ? blue : b >= 2 ? red : null };
   }
   function finals(D, state, fam) {
@@ -287,7 +298,7 @@
     return list;
   }
 
-  const API = { RANKS, TOTAL_NAMES, defaultSlots, slotsOf, slotLabel, sumoSlot, teamById, teamOfCode, sumoPts, matchKey, matchResult,
+  const API = { RANKS, TOTAL_NAMES, defaultSlots, slotsOf, slotLabel, sumoSlot, teamById, teamOfCode, sumoPts, matchKey, matchResult, isAbsent, isForfeit,
     isDone, groupStandings, tiesNeedingWeight, fieldQueue, FAMILY, seeds, finals, boWinner, sumoAwards, lineEval, lineCmp,
     lineRanking, lineAwards, MR_ITEMS, mrMax, mrValid, mrClamp, mrEval, mrCmp, mrRanking, mrAwards };
   if (typeof module !== "undefined" && module.exports) module.exports = API;

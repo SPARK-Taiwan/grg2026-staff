@@ -176,6 +176,38 @@ ok("MR 數量上限（依規則推算）", () => {
   assert.strictEqual(S.validate("mr", ["mr", "M01", "1"], { c: full, time: 60 }), "");
 });
 
+ok("逾時判分 XR/XB 計入得分與三戰兩勝", () => {
+  assert.deepStrictEqual(R.sumoPts(["XR", "B", "XB"]), { red: 1, blue: 2 });
+  assert.strictEqual(R.boWinner(["XB", "XB"], "EA01", "EA02").winner, "EA02");
+  const S = require(path.join(dir, "server.js"));
+  assert.strictEqual(S.validate("sumo", ["sumo", "EA", "1", "1"], { r: ["XR", "R", "B"] }), "");
+  assert.strictEqual(S.validate("final", ["final", "E", "F"], { rounds: ["XR", "R"] }), "");
+});
+
+ok("棄權：沒打的場次判對手 3:0，已有成績保留，排名與場地進度跟著算", () => {
+  const st = {}; drawAll(st);
+  const m0 = D.schedule.EA.find((m) => m[2] === "EA05" || m[3] === "EA05");
+  put(st, R.matchKey("EA", m0), { r: ["R", "R", "R"] });                // 棄權前已打完的一場
+  put(st, "absent:EA05", { on: true }, "admin");
+  const all = D.schedule.EA.filter((m) => m[2] === "EA05" || m[3] === "EA05");
+  all.forEach((m) => {
+    if (m === m0) { assert.ok(!R.isForfeit(st, "EA", m)); return; }
+    assert.ok(R.isForfeit(st, "EA", m));
+    const p = R.sumoPts(R.matchResult(st, "EA", m));
+    assert.strictEqual(m[2] === "EA05" ? p.blue : p.red, 3);
+  });
+  const row = R.groupStandings(D, st, "EA").rows.find((r) => r.code === "EA05");
+  assert.strictEqual(row.played, 9);
+  assert.strictEqual(row.pts, m0[2] === "EA05" ? 3 : 0);
+  // 場地進度：棄權場次視為完成
+  const q = R.fieldQueue(D, st, "EA");
+  Object.values(q).forEach((x) => { if (x.now) assert.ok(x.now[2] !== "EA05" && x.now[3] !== "EA05"); });
+  const S = require(path.join(dir, "server.js"));
+  assert.strictEqual(S.validate("absent", ["absent", "EA05"], { on: true }), "");
+  const r = S.apply({}, { items: [{ key: "absent:EA05", payload: { on: true } }] }, { nick: "裁判", roles: [4] }, "t");
+  assert.strictEqual(r.results[0].ok, false);                           // 裁判不能設棄權
+});
+
 ok("場地指派：預設與覆蓋", () => {
   const s = R.slotsOf({});
   assert.deepStrictEqual(s["am:1"], [4]); assert.deepStrictEqual(s["pm:R1"], [11]); assert.deepStrictEqual(s["pm:R6"], [16]);

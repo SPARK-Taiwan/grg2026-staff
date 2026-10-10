@@ -14,6 +14,8 @@
 //   line:<隊伍id>:<1|2>         {t:[累計秒...], done}               循跡每次的分圈累計秒數
 //   mr:<隊伍id>:<1|2>           {c:{...}, time}   MR 每次的計分項目數量與時間
 //   assign                      {slots:{...}}     場地指派（覆蓋預設）
+//   absent:<代號>               {on:true}         棄權／未到：沒有成績的場次一律判對手 3:0
+//   回合結果另有 XR／XB：對手逾時未進場（規則 2.3.11），判紅／藍方得分
 (function (root) {
   "use strict";
 
@@ -60,14 +62,23 @@
   // ---------- 相撲預賽 ----------
   function sumoPts(r) {
     const p = { red: 0, blue: 0 };
-    (r || []).forEach((x) => { if (x === "R" || x === "TR") p.red++; else if (x === "B" || x === "TB") p.blue++; });
+    (r || []).forEach((x) => { if (x === "R" || x === "TR" || x === "XR") p.red++; else if (x === "B" || x === "TB" || x === "XB") p.blue++; });
     return p;
   }
   function matchKey(gk, m) { return "sumo:" + gk + ":" + m[0] + ":" + m[1]; }
+  function isAbsent(state, code) { const a = state["absent:" + code]; return !!(a && a.payload && a.payload.on); }
+  function recorded(state, gk, m) { const s = state[matchKey(gk, m)]; return s && s.payload && Array.isArray(s.payload.r) ? s.payload.r : null; }
+  // 有輸入成績就用成績；沒有成績、但有一方棄權 → 判對手 3:0（雙方都棄權 0:0）
   function matchResult(state, gk, m) {
-    const s = state[matchKey(gk, m)];
-    return s && s.payload && Array.isArray(s.payload.r) ? s.payload.r : null;
+    const r = recorded(state, gk, m);
+    if (r) return r;
+    const ar = isAbsent(state, m[2]), ab = isAbsent(state, m[3]);
+    if (ar && ab) return ["T0", "T0", "T0"];
+    if (ar) return ["XB", "XB", "XB"];
+    if (ab) return ["XR", "XR", "XR"];
+    return null;
   }
+  function isForfeit(state, gk, m) { return !recorded(state, gk, m) && (isAbsent(state, m[2]) || isAbsent(state, m[3])); }
   function isDone(r) { return Array.isArray(r) && r.length === 3 && r.every(Boolean); }
 
   function groupStandings(D, state, gk) {
@@ -154,7 +165,7 @@
   }
   function boWinner(rounds, red, blue) {
     let r = 0, b = 0;
-    (rounds || []).forEach((x) => { if (x === "R") r++; else if (x === "B") b++; });
+    (rounds || []).forEach((x) => { if (x === "R" || x === "XR") r++; else if (x === "B" || x === "XB") b++; });
     return { r, b, winner: r >= 2 ? red : b >= 2 ? blue : null, loser: r >= 2 ? blue : b >= 2 ? red : null };
   }
   function finals(D, state, fam) {
@@ -293,7 +304,7 @@
     return list;
   }
 
-  const API = { RANKS, TOTAL_NAMES, defaultSlots, slotsOf, slotLabel, sumoSlot, teamById, teamOfCode, sumoPts, matchKey, matchResult,
+  const API = { RANKS, TOTAL_NAMES, defaultSlots, slotsOf, slotLabel, sumoSlot, teamById, teamOfCode, sumoPts, matchKey, matchResult, isAbsent, isForfeit,
     isDone, groupStandings, tiesNeedingWeight, fieldQueue, FAMILY, seeds, finals, boWinner, sumoAwards, lineEval, lineCmp,
     lineRanking, lineAwards, MR_ITEMS, mrMax, mrValid, mrClamp, mrEval, mrCmp, mrRanking, mrAwards };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
@@ -306,9 +317,9 @@
   "use strict";
   const R = root.GRG_RULES || (typeof require !== "undefined" ? require("./rules.js") : null);
 
-  const KINDS = ["draw", "sumo", "weight", "final", "lineset", "line", "mr", "assign"];
-  const ADMIN_ONLY = { draw: 1, weight: 1, lineset: 1, assign: 1 };
-  const SUMO_VALS = { R: 1, B: 1, TR: 1, TB: 1, T0: 1 };
+  const KINDS = ["draw", "sumo", "weight", "final", "lineset", "line", "mr", "assign", "absent"];
+  const ADMIN_ONLY = { draw: 1, weight: 1, lineset: 1, assign: 1, absent: 1 };
+  const SUMO_VALS = { R: 1, B: 1, TR: 1, TB: 1, T0: 1, XR: 1, XB: 1 };   // XR／XB＝對手逾時未進場判分
   const MR_KEYS = {};
   R.MR_ITEMS.forEach((x) => { MR_KEYS[x[0]] = 1; });
 
@@ -330,7 +341,7 @@
         return isNum(p.g, 0, 100000) ? "" : "重量格式錯誤";
       case "final":
         if (parts.length !== 3 || ["E", "J", "R"].indexOf(parts[1]) < 0 || ["SF1", "SF2", "F"].indexOf(parts[2]) < 0) return "決賽場次錯誤";
-        if (p.rounds != null && !(Array.isArray(p.rounds) && p.rounds.length <= 3 && p.rounds.every((x) => x === "R" || x === "B"))) return "決賽成績格式錯誤";
+        if (p.rounds != null && !(Array.isArray(p.rounds) && p.rounds.length <= 3 && p.rounds.every((x) => x === "R" || x === "B" || x === "XR" || x === "XB"))) return "決賽成績格式錯誤";
         return "";
       case "lineset":
         return isInt(p.laps, 2, 5) && isNum(p.sec, 10, 30) ? "" : "圈數 2–5、每圈秒數 10–30";
@@ -342,6 +353,8 @@
         if (!isObj(p.c) || !Object.keys(p.c).every((k) => MR_KEYS[k] && isInt(p.c[k], 0, 99))) return "MR 計分項目錯誤";
         if (!R.mrValid(p.c)) return "MR 完成數量超過規則上限";
         return p.time == null || isNum(p.time, 0, 120) ? "" : "MR 時間 0–120 秒";
+      case "absent":
+        return parts.length === 2 && typeof p.on === "boolean" ? "" : "棄權資料錯誤";
       case "assign":
         return isObj(p.slots) && Object.keys(p.slots).every((k) => Array.isArray(p.slots[k]) && p.slots[k].every((x) => isInt(x, 1, 99))) ? "" : "場地指派格式錯誤";
     }
@@ -406,6 +419,7 @@
 
 var SCORE_DATA = '計分資料', SCORE_LOG = '計分紀錄', SCORE_CACHE = 'score_get_v1';
 var SCORE_ADMIN_FAILS = 10;
+var SCORE_MAX_FAILS = 10, SCORE_LOCK_MINUTES = 3;      // 比賽當天裁判電話輸錯：10 次才鎖、只鎖 3 分鐘（崗位認領網站維持原規則）
 
 function scoreSheet_(name, header) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -493,19 +507,27 @@ function scorePost_(req) {
     who = { admin: true };
   } else {
     var nick = String(req.nickname || '').trim();
-    var failKey = 'fail_' + nick;
+    var failKey = 'sfail_' + nick;
     var s = readStaff_();
     if (!Object.prototype.hasOwnProperty.call(s.staff, nick)) return json_({ ok: false, message: '找不到這個暱稱' });
-    if (Number(cache.get(failKey) || 0) >= MAX_FAILS) return json_({ ok: false, message: '電話錯誤太多次，請 ' + LOCK_MINUTES + ' 分鐘後再試' });
+    if (Number(cache.get(failKey) || 0) >= SCORE_MAX_FAILS) return json_({ ok: false, message: '電話錯誤太多次，請 ' + SCORE_LOCK_MINUTES + ' 分鐘後再試，或請計分台解除鎖定' });
     if (!samePhone_(req.phone, s.staff[nick])) {
-      cache.put(failKey, String(Number(cache.get(failKey) || 0) + 1), LOCK_MINUTES * 60);
+      cache.put(failKey, String(Number(cache.get(failKey) || 0) + 1), SCORE_LOCK_MINUTES * 60);
       return json_({ ok: false, message: '電話號碼不符' });
     }
     var claims = readClaims_(), roles = [];
     for (var id in claims) if (claims[id] === nick) roles.push(Number(id));
     who = { nick: nick, roles: roles };
   }
-  if (req.action === 'score.login') return json_({ ok: true, nick: who.nick || '', roles: who.roles || [], admin: !!who.admin });
+  if (req.action === 'score.login') {
+    if (!who.admin) cache.remove('sfail_' + who.nick);   // 登入成功就清掉錯誤次數
+    return json_({ ok: true, nick: who.nick || '', roles: who.roles || [], admin: !!who.admin });
+  }
+  if (req.action === 'score.unlock') {                    // 計分台幫裁判解除電話錯誤鎖定
+    if (!who.admin) return json_({ ok: false, message: '只有計分台可以解除鎖定' });
+    cache.remove('sfail_' + String(req.nickname || '').trim());
+    return json_({ ok: true, message: '已解除 ' + req.nickname + ' 的鎖定' });
+  }
   if (req.action !== 'score.put') return json_({ ok: false, message: '未知的動作' });
 
   // 排隊只包「讀成績 → 檢查 → 寫成績 → 更新快取」；名單、認領先讀好，紀錄排完隊再寫，讓每個人排隊時間最短

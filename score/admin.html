@@ -104,6 +104,8 @@
       '<h2>全部對戰</h2><label class="lbl inline noprint" style="max-width:240px">只看場地<select id="fieldFilter"><option value="">全部場地</option>' +
       D.groups[gk].fields.map((f) => '<option value="' + f + '"' + (String(f) === fieldFilter ? " selected" : "") + ">場地 " + f + "</option>").join("") + "</select></label>" +
       '<p class="note">計分台改過的場次，裁判就不能再改（避免覆蓋）。</p>' +
+      "<h2>棄權／未到</h2><p class=\"note\">隊伍沒來或中途棄權：點一下代號設為棄權，該隊還沒打的場次自動判對手 3:0，裁判手機會直接跳過；已打完的成績保留。再點一次取消。</p>" +
+      '<div class="absent-grid noprint">' + D.groups[gk].codes.map((c) => '<button type="button" class="' + (R.isAbsent(st, c) ? "on" : "") + '" data-absent="' + c + '">' + UI.teamText(st, c) + (R.isAbsent(st, c) ? "（棄權）" : "") + "</button>").join("") + "</div>" +
       ms.map((m) => UI.sumoMatchHTML(st, gk, m, { admin: true, showField: true })).join("");
   }
 
@@ -163,7 +165,9 @@
       slots[s].map((id) => "#" + pad(id) + " " + esc(claims[id] || "（未認領）")).join("<br>") + "</td></tr>";
     return "<h2>場地指派</h2><p class=\"note\">填崗位編號（多位用逗號分隔）。該崗位的人登入裁判頁，就能輸入這個場地的成績。</p>" +
       '<table class="tbl"><thead><tr><th>場地</th><th style="width:140px">崗位編號</th><th>目前的人</th></tr></thead><tbody>' + keys.map(row).join("") + "</tbody></table>" +
-      '<div class="foot"><button type="button" class="ghost" id="assignReset">恢復預設</button><button type="button" id="assignSave">儲存指派</button></div>';
+      '<div class="foot"><button type="button" class="ghost" id="assignReset">恢復預設</button><button type="button" id="assignSave">儲存指派</button></div>' +
+      '<h2>裁判登入被鎖住</h2><p class="note">裁判電話連續輸錯 10 次會被鎖 3 分鐘；選他的暱稱按「解除鎖定」就能馬上重新登入。</p>' +
+      '<div class="grid2" style="gap:8px;max-width:520px"><select id="unlockNick"><option value="">選暱稱</option>' + (server.nicknames || []).map((n) => "<option>" + esc(n) + "</option>").join("") + '</select><button type="button" id="unlockBtn">解除鎖定</button></div>';
   }
 
   function awardView(st) {
@@ -244,6 +248,14 @@
         codes.forEach((c, i) => items.push({ key: "draw:" + c, payload: teams[i] ? { team: teams[i] } : null }));
       });
       saveAndRender(items);
+    } else if (b.dataset.absent) {
+      const c = b.dataset.absent, on = R.isAbsent(st, c), name = UI.teamText(st, c).replace(/&amp;/g, "&");
+      if (!confirm(on ? "取消 " + name + " 的棄權？" : name + " 設為棄權？\n還沒打的場次都會判對手 3:0。")) return;
+      saveAndRender([{ key: "absent:" + c, payload: on ? null : { on: true } }]);
+    } else if (b.id === "unlockBtn") {
+      const n = document.getElementById("unlockNick").value;
+      if (!n) { UI.toast("請先選暱稱", false); return; }
+      API.post({ action: "score.unlock", admin: pw, nickname: n }).then((r) => UI.toast(r.message, r.ok)).catch(() => UI.toast("連線失敗", false));
     } else if (b.id === "assignReset") {
       if (confirm("恢復預設的場地指派？")) saveAndRender([{ key: "assign", payload: null }]);
     }

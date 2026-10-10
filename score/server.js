@@ -4,9 +4,9 @@
   "use strict";
   const R = root.GRG_RULES || (typeof require !== "undefined" ? require("./rules.js") : null);
 
-  const KINDS = ["draw", "sumo", "weight", "final", "lineset", "line", "mr", "assign"];
-  const ADMIN_ONLY = { draw: 1, weight: 1, lineset: 1, assign: 1 };
-  const SUMO_VALS = { R: 1, B: 1, TR: 1, TB: 1, T0: 1 };
+  const KINDS = ["draw", "sumo", "weight", "final", "lineset", "line", "mr", "assign", "absent"];
+  const ADMIN_ONLY = { draw: 1, weight: 1, lineset: 1, assign: 1, absent: 1 };
+  const SUMO_VALS = { R: 1, B: 1, TR: 1, TB: 1, T0: 1, XR: 1, XB: 1 };   // XR／XB＝對手逾時未進場判分
   const MR_KEYS = {};
   R.MR_ITEMS.forEach((x) => { MR_KEYS[x[0]] = 1; });
 
@@ -28,7 +28,7 @@
         return isNum(p.g, 0, 100000) ? "" : "重量格式錯誤";
       case "final":
         if (parts.length !== 3 || ["E", "J", "R"].indexOf(parts[1]) < 0 || ["SF1", "SF2", "F"].indexOf(parts[2]) < 0) return "決賽場次錯誤";
-        if (p.rounds != null && !(Array.isArray(p.rounds) && p.rounds.length <= 3 && p.rounds.every((x) => x === "R" || x === "B"))) return "決賽成績格式錯誤";
+        if (p.rounds != null && !(Array.isArray(p.rounds) && p.rounds.length <= 3 && p.rounds.every((x) => x === "R" || x === "B" || x === "XR" || x === "XB"))) return "決賽成績格式錯誤";
         return "";
       case "lineset":
         return isInt(p.laps, 2, 5) && isNum(p.sec, 10, 30) ? "" : "圈數 2–5、每圈秒數 10–30";
@@ -40,6 +40,8 @@
         if (!isObj(p.c) || !Object.keys(p.c).every((k) => MR_KEYS[k] && isInt(p.c[k], 0, 99))) return "MR 計分項目錯誤";
         if (!R.mrValid(p.c)) return "MR 完成數量超過規則上限";
         return p.time == null || isNum(p.time, 0, 120) ? "" : "MR 時間 0–120 秒";
+      case "absent":
+        return parts.length === 2 && typeof p.on === "boolean" ? "" : "棄權資料錯誤";
       case "assign":
         return isObj(p.slots) && Object.keys(p.slots).every((k) => Array.isArray(p.slots[k]) && p.slots[k].every((x) => isInt(x, 1, 99))) ? "" : "場地指派格式錯誤";
     }

@@ -243,3 +243,24 @@ details.match .sv { font-family: inherit; font-weight: 400; font-size: 14px; }
 .item.has .cv { color: var(--ok); }
 button.cnt:disabled { opacity: .3; }
 .tpicked { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #eef3fb; border: 2px solid var(--navy); border-radius: 10px; padding: 8px 12px; margin: 4px 0 8px; font-size: 16px; }
+
+/* ---------- 裁判：叫號、回合計時（10/10） ---------- */
+.steps3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 4px 0 8px; }
+.steps3 span { text-align: center; font-size: 13px; padding: 5px 0; border-radius: 6px; background: var(--soft); color: var(--mute); font-weight: 700; }
+.steps3 span.on { background: var(--navy); color: #fff; }
+.steps3 span.ok { background: var(--okbg); color: var(--ok); }
+button.huge { width: 100%; padding: 22px 8px; font-size: 21px; margin: 8px 0; }
+.bigtimer { text-align: center; font: 700 30px Arial, "Microsoft JhengHei", sans-serif; padding: 12px 6px; border-radius: 12px; background: #e9f7f1; color: var(--ok); margin: 8px 0; }
+.bigtimer.late { background: var(--rbg); color: var(--err); animation: blink 1s infinite; }
+.resttimer { text-align: center; font-size: 17px; font-weight: 700; padding: 8px; border-radius: 10px; background: var(--soft); color: var(--navy); margin: 8px 0 0; }
+.resttimer.late { background: var(--warnbg); color: var(--warn); }
+@keyframes blink { 50% { opacity: .55; } }
+.arrive { padding: 20px 6px; font-size: 19px; background: #fff; border: 3px solid; }
+.arrive small { display: block; font-size: 13px; font-weight: 400; margin-top: 4px; }
+.arrive.r { color: var(--red); border-color: var(--red); } .arrive.b { color: var(--blue); border-color: var(--blue); }
+.arrive.r.done { background: var(--red); color: #fff; } .arrive.b.done { background: var(--blue); color: #fff; }
+.pen { background: var(--warnbg); color: var(--warn); font-weight: 700; border-radius: 8px; padding: 6px 10px; margin: 4px 0; font-size: 14px; }
+.allm { margin-top: 6px; }
+.absent-grid { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.absent-grid button { background: #fff; color: var(--ink); border: 1px solid var(--line); font-weight: 400; padding: 6px 10px; }
+.absent-grid button.on { background: var(--err); color: #fff; border-color: var(--err); font-weight: 700; }

@@ -32,6 +32,7 @@ window.GRG_API = (function () {
       who = { nick, roles: Object.keys(DEMO.claims).filter((id) => DEMO.claims[id] === nick).map(Number) };
     }
     if (req.action === "score.login") return { ok: true, nick: who.nick, roles: who.roles || [], admin: !!who.admin };
+    if (req.action === "score.unlock") return who.admin ? { ok: true, message: "已解除 " + req.nickname + " 的鎖定（示範）" } : { ok: false, message: "只有計分台可以解除鎖定" };
     if (req.action !== "score.put") return { ok: false, message: "未知的動作" };
     const out = S.apply(demoState(), req, who, new Date().toISOString());
     store.set("grgScoreDemo", out.state);

@@ -5,6 +5,7 @@
 
 var SCORE_DATA = '計分資料', SCORE_LOG = '計分紀錄', SCORE_CACHE = 'score_get_v1';
 var SCORE_ADMIN_FAILS = 10;
+var SCORE_MAX_FAILS = 10, SCORE_LOCK_MINUTES = 3;      // 比賽當天裁判電話輸錯：10 次才鎖、只鎖 3 分鐘（崗位認領網站維持原規則）
 
 function scoreSheet_(name, header) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -92,19 +93,27 @@ function scorePost_(req) {
     who = { admin: true };
   } else {
     var nick = String(req.nickname || '').trim();
-    var failKey = 'fail_' + nick;
+    var failKey = 'sfail_' + nick;
     var s = readStaff_();
     if (!Object.prototype.hasOwnProperty.call(s.staff, nick)) return json_({ ok: false, message: '找不到這個暱稱' });
-    if (Number(cache.get(failKey) || 0) >= MAX_FAILS) return json_({ ok: false, message: '電話錯誤太多次，請 ' + LOCK_MINUTES + ' 分鐘後再試' });
+    if (Number(cache.get(failKey) || 0) >= SCORE_MAX_FAILS) return json_({ ok: false, message: '電話錯誤太多次，請 ' + SCORE_LOCK_MINUTES + ' 分鐘後再試，或請計分台解除鎖定' });
     if (!samePhone_(req.phone, s.staff[nick])) {
-      cache.put(failKey, String(Number(cache.get(failKey) || 0) + 1), LOCK_MINUTES * 60);
+      cache.put(failKey, String(Number(cache.get(failKey) || 0) + 1), SCORE_LOCK_MINUTES * 60);
       return json_({ ok: false, message: '電話號碼不符' });
     }
     var claims = readClaims_(), roles = [];
     for (var id in claims) if (claims[id] === nick) roles.push(Number(id));
     who = { nick: nick, roles: roles };
   }
-  if (req.action === 'score.login') return json_({ ok: true, nick: who.nick || '', roles: who.roles || [], admin: !!who.admin });
+  if (req.action === 'score.login') {
+    if (!who.admin) cache.remove('sfail_' + who.nick);   // 登入成功就清掉錯誤次數
+    return json_({ ok: true, nick: who.nick || '', roles: who.roles || [], admin: !!who.admin });
+  }
+  if (req.action === 'score.unlock') {                    // 計分台幫裁判解除電話錯誤鎖定
+    if (!who.admin) return json_({ ok: false, message: '只有計分台可以解除鎖定' });
+    cache.remove('sfail_' + String(req.nickname || '').trim());
+    return json_({ ok: true, message: '已解除 ' + req.nickname + ' 的鎖定' });
+  }
   if (req.action !== 'score.put') return json_({ ok: false, message: '未知的動作' });
 
   // 排隊只包「讀成績 → 檢查 → 寫成績 → 更新快取」；名單、認領先讀好，紀錄排完隊再寫，讓每個人排隊時間最短

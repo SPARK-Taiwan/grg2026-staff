@@ -12,7 +12,7 @@ window.GRG_UI = (function () {
   const FAM_NAME = { E: "相撲自動組 國小組", J: "相撲自動組 國高中組", R: "相撲遙控組" };
   const FINAL_NAME = { SF1: "準決賽 ①", SF2: "準決賽 ②", F: "冠亞軍賽" };
   const SUMO_OPTS = [["R", "紅勝", "r"], ["B", "藍勝", "b"], ["TR", "時間到・紅較輕", "r"], ["TB", "時間到・藍較輕", "b"], ["T0", "時間到・一樣重", "g"]];
-  const SUMO_SHORT = { R: "紅", B: "藍", TR: "紅輕", TB: "藍輕", T0: "同重" };
+  const SUMO_SHORT = { R: "紅", B: "藍", TR: "紅輕", TB: "藍輕", T0: "同重", XR: "紅逾", XB: "藍逾" };
 
   // ---------- 隊伍顯示 ----------
   function teamHTML(st, code, o) {
@@ -58,7 +58,7 @@ window.GRG_UI = (function () {
       const x = F[slot];
       const side = (code, label, cls) => '<div class="fs ' + cls + (x.winner && x.winner === code ? " win" : "") + (x.loser && x.loser === code ? " lose" : "") + '">' +
         (code ? teamHTML(st, code) : '<span class="mute">' + esc(label) + "</span>") + "</div>";
-      const chips = x.rounds.map((v) => '<i class="chip ' + (v === "R" ? "r" : "b") + '">' + (v === "R" ? "紅" : "藍") + "</i>").join("");
+      const chips = x.rounds.map((v) => { const red = v === "R" || v === "XR"; return '<i class="chip ' + (red ? "r" : "b") + '">' + (red ? "紅" : "藍") + (v[0] === "X" ? "逾" : "") + "</i>"; }).join("");
       return '<div class="final"><div class="fh"><b>' + FINAL_NAME[slot] + "</b>" + (x.field ? '<span class="mute">' + esc(R.slotLabel(x.field)) + "</span>" : "") + "</div>" +
         side(x.red, x.labels[0], "red") + '<div class="frow"><span class="score">' + x.r + " : " + x.b + "</span>" + chips + "</div>" + side(x.blue, x.labels[1], "blue") + "</div>";
     };
@@ -105,10 +105,10 @@ window.GRG_UI = (function () {
     while (d.length < 3) d.push(null);
     const done = R.isDone(cur), dirty = key in drafts;
     const p = R.sumoPts(d), sp = R.sumoPts(cur || []);
-    const status = rec && rec.pending ? '<span class="tag warn">待上傳</span>' : done ? '<span class="tag ok">完成</span>' : cur ? '<span class="tag">輸入中</span>' : "";
+    const status = R.isForfeit(st, gk, m) ? '<span class="tag warn">棄權（判對手 3:0）</span>' : rec && rec.pending ? '<span class="tag warn">待上傳</span>' : done ? '<span class="tag ok">完成</span>' : cur ? '<span class="tag">輸入中</span>' : "";
     const canSend = dirty && (o.admin || d.every(Boolean));
     const open = dirty || openSet.has(key) || (!done && o.openPending);
-    const chipsSummary = (cur || []).filter(Boolean).map((v) => '<i class="chip ' + ({ R: "r", TR: "r", B: "b", TB: "b" }[v] || "g") + '">' + SUMO_SHORT[v] + "</i>").join("");
+    const chipsSummary = (cur || []).filter(Boolean).map((v) => '<i class="chip ' + ({ R: "r", TR: "r", XR: "r", B: "b", TB: "b", XB: "b" }[v] || "g") + '">' + SUMO_SHORT[v] + "</i>").join("");
     return '<details class="match' + (done ? " done" : "") + '" data-key="' + key + '" data-gk="' + gk + '"' + (open ? " open" : "") + ">" +
       '<summary><span class="rnd">第 ' + m[0] + " 輪" + (o.showField ? "・場地 " + m[1] : "") + '</span><span class="sv"><span class="r">紅 ' + teamText(st, m[2]) + "</span> <b>" + sp.red + " : " + sp.blue + '</b> <span class="b">藍 ' + teamText(st, m[3]) + "</span></span>" + chipsSummary + status + "</summary>" +
       '<div class="mbody"><div class="vs"><div class="side red">' + teamHTML(st, m[2]) + '</div><div class="pts">' + p.red + " : " + p.blue + '</div><div class="side blue">' + teamHTML(st, m[3]) + "</div></div>" +
@@ -229,11 +229,16 @@ window.GRG_UI = (function () {
   }
 
   // ====================== 裁判：一步一步輸入＋雙方確認 ======================
-  // JD[key] = { r:[回合結果], cf:{R,B}（雙方已確認）, tu:是否展開「時間到」 }
+  // 每一場三個步驟：① 叫號（倒數 1 分鐘，選手到了按「到了」；逾時每 30 秒自動判對手 1 回合）
+  //                 ② 比賽（30 秒回合倒數、時間到嗶聲；點結果後自動休息 1 分鐘）  ③ 雙方選手確認
+  // JD[key] = { r:[回合], cf:{R,B}, tu:展開時間到, call:叫號開始時間, arr:{R,B}, go:開始比賽, pen:已判逾時回合數,
+  //             rs:回合開始時間, rsDone:這回合已提示時間到, rest:休息開始時間, restDone }
   const JD = {};
-  const J = { focus: null };            // 指定要修改的場次 key
-  const JSHORT = { R: "紅得分", B: "藍得分", TR: "紅較輕", TB: "藍較輕", T0: "一樣重" };
-  const jcls = (v) => ({ R: "r", TR: "r", B: "b", TB: "b" }[v] || "g");
+  const J = { focus: null, showAll: false };
+  const CALL_SEC = 60, LATE_SEC = 30, ROUND_SEC = 30, REST_SEC = 60;
+  const JSHORT = { R: "紅得分", B: "藍得分", TR: "紅較輕", TB: "藍較輕", T0: "一樣重", XR: "紅（對手逾時）", XB: "藍（對手逾時）" };
+  const jcls = (v) => ({ R: "r", TR: "r", XR: "r", B: "b", TB: "b", XB: "b" }[v] || "g");
+  const isRed = (v) => v === "R" || v === "XR";
   const teamText = (st, code) => { const t = R.teamOfCode(D, st, code); return esc(code) + (t ? " " + esc(t.name) : ""); };
   const sideBox = (st, code, cls, label) => {
     const t = R.teamOfCode(D, st, code);
@@ -243,44 +248,114 @@ window.GRG_UI = (function () {
     '<button type="button" class="confirm ' + (side === "R" ? "r" : "b") + (done ? " done" : "") + '" data-act="js-cf" data-side="' + side + '"' + (done ? " disabled" : "") + ">" +
     (done ? "✓ " : "") + (side === "R" ? "紅方 " : "藍方 ") + teamText(st, code) + "<small>" + (done ? "已確認" : "按這裡確認成績") + "</small></button>";
 
+  // 進行中的場次存在手機：手機待機、重新整理都不會不見
+  try { const sv = JSON.parse(localStorage.getItem("grgJudgeJD") || "null"); if (sv) { Object.assign(JD, sv.JD || {}); J.focus = sv.focus || null; } } catch (e) {}
+  const saveJD = () => { try { localStorage.setItem("grgJudgeJD", JSON.stringify({ JD, focus: J.focus })); } catch (e) {} };
+  const mmss = (sec) => { const s = Math.max(0, Math.ceil(sec)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+  const now = () => Date.now();
+  const isComplete = (d, isFinal) => (isFinal ? !!R.boWinner(d.r, "R", "B").winner : d.r.length >= 3);
+
+  // 嗶聲＋震動（時間到、判逾時）
+  let actx = null;
+  function beep(times) {
+    try { if (navigator.vibrate) navigator.vibrate(times > 1 ? [300, 150, 300] : 400); } catch (e) {}
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      for (let i = 0; i < (times || 1); i++) {
+        const o = actx.createOscillator(), g = actx.createGain();
+        o.frequency.value = 880; o.connect(g); g.connect(actx.destination);
+        const t0 = actx.currentTime + i * 0.35;
+        g.gain.setValueAtTime(0.3, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.28);
+        o.start(t0); o.stop(t0 + 0.3);
+      }
+    } catch (e) {}
+  }
+
+  function stepsBar(n) {
+    return '<div class="steps3">' + ["① 叫號", "② 比賽", "③ 選手確認"].map((t, i) => '<span class="' + (i + 1 === n ? "on" : i + 1 < n ? "ok" : "") + '">' + t + "</span>").join("") + "</div>";
+  }
+
+  // 叫號倒數文字（給畫面與每秒更新共用）
+  function callText(d) {
+    const el = (now() - d.call) / 1000;
+    if (el < CALL_SEC) return { cls: "", txt: "叫號中　剩 " + mmss(CALL_SEC - el) };
+    return { cls: "late", txt: "已逾時 " + mmss(el - CALL_SEC) };
+  }
+  function roundText(d, isFinal) {
+    const el = (now() - d.rs) / 1000;
+    if (el < ROUND_SEC) return { cls: "", txt: "比賽中　剩 " + mmss(ROUND_SEC - el) };
+    return { cls: "late", txt: isFinal ? "時間到！雙方都沒落敗 → 本戰重賽" : "時間到！雙方都還在場上 → 比重量" };
+  }
+  function restText(d) {
+    const el = (now() - d.rest) / 1000;
+    if (el < REST_SEC) return { cls: "", txt: "休息・可維修　剩 " + mmss(REST_SEC - el) };
+    return { cls: "late", txt: "休息結束，請開始下一回合" };
+  }
+
   // 進行中／修改中的那一場（預賽 3 回合全打；決賽三戰兩勝）
   function nowCard(st, key, red, blue, title, sub, isFinal, editing) {
     const d = JD[key] || { r: [], cf: {} };
-    const p = isFinal ? (() => { const x = R.boWinner(d.r, red, blue); return { red: x.r, blue: x.b, winner: x.winner }; })() : R.sumoPts(d.r);
-    const complete = isFinal ? !!p.winner : d.r.length === 3;
-    const n = isFinal ? 3 : 3;
-    let h = '<div class="card now' + (editing ? " editing" : "") + '" data-key="' + key + '"><div class="nowh"><b>' + title + "</b><span>" + sub + "</span></div>" +
-      '<div class="vs big">' + sideBox(st, red, "red", "紅方") + '<div class="pts">' + p.red + " : " + p.blue + "</div>" + sideBox(st, blue, "blue", "藍方") + "</div>";
-    if (!red || !blue) return h + '<p class="note">對戰隊伍尚未產生，請等計分台。</p></div>';
-    h += '<div class="rounds">' + Array.from({ length: n }, (_, i) => {
-      const v = d.r[i], curI = i === d.r.length && !complete;
-      return '<button type="button" class="rchip' + (v ? " set " + jcls(v) : curI ? " cur" : "") + '" data-act="js-redo" data-i="' + i + '"' + (v ? "" : " disabled") + ">" +
-        (isFinal ? "第 " + (i + 1) + " 戰" : "第 " + (i + 1) + " 回合") + "<b>" + (v ? (isFinal ? (v === "R" ? "紅勝" : "藍勝") : JSHORT[v]) : curI ? "輸入中" : "—") + "</b></button>";
-    }).join("") + '</div><p class="note small">點已輸入的回合可以從那一回合重新輸入</p>';
-    if (!complete) {
+    const p = isFinal ? (() => { const x = R.boWinner(d.r, red, blue); return { red: x.r, blue: x.b }; })() : R.sumoPts(d.r);
+    const complete = isComplete(d, isFinal);
+    let h = '<div class="card now' + (editing ? " editing" : "") + '" data-key="' + key + '"><div class="nowh"><b>' + title + "</b><span>" + sub + "</span></div>";
+    if (!red || !blue) return h + '<div class="vs big">' + sideBox(st, red, "red", "紅方") + '<div class="pts">vs</div>' + sideBox(st, blue, "blue", "藍方") + '</div><p class="note">對戰隊伍尚未產生，請等計分台。</p></div>';
+    const phase = complete ? 3 : d.go || editing ? 2 : 1;
+    h += stepsBar(phase) + '<div class="vs big">' + sideBox(st, red, "red", "紅方") + '<div class="pts">' + p.red + " : " + p.blue + "</div>" + sideBox(st, blue, "blue", "藍方") + "</div>";
+    // 已判的逾時回合
+    const pen = d.r.map((v, i) => (v === "XR" || v === "XB") ? "第 " + (i + 1) + (isFinal ? " 戰" : " 回合") + "：" + (v === "XR" ? "紅方得分（藍方逾時）" : "藍方得分（紅方逾時）") : "").filter(Boolean);
+    if (pen.length) h += '<div class="pen">⏰ ' + pen.join("　") + "</div>";
+
+    if (phase === 1) {
+      h += '<p class="ask">請大聲叫號</p>';
+      if (!d.call) {
+        h += '<button type="button" class="go huge" data-act="js-call">📣 開始叫號（計時 1 分鐘）</button>' +
+             '<button type="button" class="ghost wide" data-act="js-go">選手都已經到了，直接開始比賽</button>';
+      } else {
+        const c = callText(d);
+        h += '<div class="bigtimer ' + c.cls + '" data-tick="call" data-key="' + key + '">' + c.txt + "</div>" +
+             '<p class="ask small">選手到場地了，就按他的按鈕</p><div class="pick">' +
+             '<button type="button" class="arrive r' + (d.arr && d.arr.R ? " done" : "") + '" data-act="js-arr" data-side="R">' + (d.arr && d.arr.R ? "✓ " : "") + "紅方 到了<small>" + teamText(st, red) + "</small></button>" +
+             '<button type="button" class="arrive b' + (d.arr && d.arr.B ? " done" : "") + '" data-act="js-arr" data-side="B">' + (d.arr && d.arr.B ? "✓ " : "") + "藍方 到了<small>" + teamText(st, blue) + "</small></button></div>" +
+             '<p class="note">雙方都按「到了」就開始比賽。1 分鐘後還沒到的一方，每過 30 秒自動判對手贏 1 回合（規則 2.3.11）。</p>';
+        if ((now() - d.call) / 1000 >= CALL_SEC && !(d.arr && (d.arr.R || d.arr.B))) h += '<div class="banner err">雙方都還沒到：請找計分台（隊伍沒來可以設為棄權）</div>';
+      }
+    } else if (phase === 2) {
       const i = d.r.length + 1;
+      h += '<div class="rounds">' + [0, 1, 2].map((k) => {
+        const v = d.r[k], curI = k === d.r.length;
+        return '<button type="button" class="rchip' + (v ? " set " + jcls(v) : curI ? " cur" : "") + '" data-act="js-redo" data-i="' + k + '"' + (v ? "" : " disabled") + ">" +
+          (isFinal ? "第 " + (k + 1) + " 戰" : "第 " + (k + 1) + " 回合") + "<b>" + (v ? (isFinal ? (isRed(v) ? "紅勝" : "藍勝") : JSHORT[v]) : curI ? "這一回合" : "—") + "</b></button>";
+      }).join("") + "</div>";
+      if (d.rs) { const t = roundText(d, isFinal); h += '<div class="bigtimer ' + t.cls + '" data-tick="round" data-key="' + key + '">' + t.txt + "</div>"; }
+      else {
+        if (d.rest) { const t = restText(d); h += '<div class="resttimer ' + t.cls + '" data-tick="rest" data-key="' + key + '">' + t.txt + "</div>"; }
+        h += '<button type="button" class="go huge" data-act="js-round">▶ 開始' + (isFinal ? "第 " + i + " 戰" : "第 " + i + " 回合") + "（30 秒）</button>";
+      }
       h += '<p class="ask">' + (isFinal ? "第 " + i + " 戰：誰贏？" : "第 " + i + " 回合：誰得分？") + '</p><div class="pick">' +
         '<button type="button" class="opt r big" data-act="js-pick" data-v="R">' + (isFinal ? "紅方勝" : "紅方得分") + "<small>" + teamText(st, red) + "</small></button>" +
         '<button type="button" class="opt b big" data-act="js-pick" data-v="B">' + (isFinal ? "藍方勝" : "藍方得分") + "<small>" + teamText(st, blue) + "</small></button></div>";
       if (!isFinal) h += d.tu
         ? '<p class="ask small">時間到、雙方都還在場上：比重量，較輕的得 1 分</p><div class="pick three"><button type="button" class="opt r" data-act="js-pick" data-v="TR">紅方較輕<small>紅得 1 分</small></button><button type="button" class="opt b" data-act="js-pick" data-v="TB">藍方較輕<small>藍得 1 分</small></button><button type="button" class="opt g" data-act="js-pick" data-v="T0">一樣重<small>都不得分</small></button></div>'
         : '<button type="button" class="ghost wide" data-act="js-tu">30 秒時間到、雙方都還在場上 →</button>';
+      else h += '<p class="note">決賽時間到雙方都沒落敗：本戰重賽，不用按；重賽仍未分勝負，由較輕的一方勝。</p>';
+      if (d.r.length) h += '<p class="note small">點上面已輸入的回合，可以從那一回合重新輸入</p>';
     } else {
       h += '<p class="ask">請雙方選手看過成績，各自按自己的按鈕確認</p><div class="pick">' + confirmBtn(st, red, "R", d.cf.R) + confirmBtn(st, blue, "B", d.cf.B) + "</div>" +
-        '<p class="note">雙方都確認後會自動送出。</p>';
+        '<p class="note">雙方都確認後會自動送出。' + (pen.length ? "沒到場的一方由裁判代按。" : "") + "</p>";
     }
-    if (d.r.length || editing) h += '<div class="foot"><button type="button" class="ghost small" data-act="js-cancel">' + (editing ? "取消修改" : "這場清除重來") + "</button></div>";
+    if (d.r.length || d.call || d.go || editing) h += '<div class="foot"><button type="button" class="ghost small" data-act="js-cancel">' + (editing ? "取消修改" : "這場清除重來") + "</button></div>";
     return h + "</div>";
   }
 
-  // 裁判的某個相撲場地：決賽（若指派到這裡）→ 現在這一場 → 下一場叫號 → 全部對戰
+  // 裁判的某個相撲場地：決賽（若指派到這裡）→ 現在這一場 → 下一場預告 → 全部對戰（收起來）
   function judgeFieldHTML(st, gk, field, slot) {
     const ms = D.schedule[gk].filter((m) => m[1] === field).sort((a, b) => a[0] - b[0]);
     const done = (m) => R.isDone(R.matchResult(st, gk, m));
     const pending = ms.filter((m) => !done(m));
     const fam = gk === "EA" || gk === "EB" ? "E" : gk;
     let h = "";
-    // 決賽
+    // 已經有成績的場次（別支手機或計分台輸入的），手機裡進行中的紀錄就清掉
+    ms.forEach((m) => { const k = R.matchKey(gk, m); if (JD[k] && done(m) && J.focus !== k) { delete JD[k]; saveJD(); } });
     const fins = ["SF1", "SF2", "F"].filter((x) => ((st["final:" + fam + ":" + x] || {}).payload || {}).field === slot);
     const F = fins.length ? R.finals(D, st, fam) : null;
     // 決賽要雙方隊伍都產生了才接手畫面；事先指派場地時，預賽照常進行
@@ -289,61 +364,106 @@ window.GRG_UI = (function () {
       const x = F[finFocus], key = "final:" + fam + ":" + finFocus;
       h += nowCard(st, key, x.red, x.blue, (x.winner ? "修改決賽成績" : "決賽") + "｜" + FINAL_NAME[finFocus], FAM_NAME[fam] + "・三戰兩勝", true, !!x.winner);
     }
-    fins.filter((x) => x !== finFocus).forEach((x) => {
-      const y = F[x], key = "final:" + fam + ":" + x, locked = (st[key].payload || {}).adminRounds;
-      if (!y.winner) {                                   // 還沒比：只提示，不給修改
-        h += '<div class="lrow"><span class="rnd">' + FINAL_NAME[x] + '</span><span class="lt"><span>' + (y.red && y.blue ? "紅 " + teamText(st, y.red) + "　vs　藍 " + teamText(st, y.blue) : "決賽在這個場地進行，對戰隊伍產生後會出現在上方") + '</span></span><span class="res"><small class="mute">待比賽</small></span></div>';
-        return;
-      }
-      h += '<div class="lrow done"><span class="rnd">' + FINAL_NAME[x] + '</span><span class="lt"><span class="r">紅 ' + teamText(st, y.red) + '</span><span class="b">藍 ' + teamText(st, y.blue) + '</span></span><span class="res"><b>' + y.r + ":" + y.b + "</b></span>" +
-        (locked ? '<small class="mute">計分台已改</small>' : '<button type="button" class="ghost small" data-act="js-edit" data-key="' + key + '">修改</button>') + "</div>";
-    });
-    // 預賽
     const focus = ms.find((m) => R.matchKey(gk, m) === J.focus);
     const cur = focus || pending[0] || null;
     if (!finFocus) {
       if (cur) h += nowCard(st, R.matchKey(gk, cur), cur[2], cur[3], focus && done(focus) ? "修改成績" : "現在比賽", "第 " + cur[0] + " 輪・場地 " + field, false, !!(focus && done(focus)));
-      else h += '<div class="banner okb">本場地預賽全部完成 ✓' + (fins.length ? "" : "　決賽若指派到這個場地，會出現在這裡") + "</div>";
+      else h += '<div class="banner okb">本場地預賽全部完成 ✓' + (fins.length ? "　決賽隊伍產生後會出現在這裡" : "") + "</div>";
       const nxt = pending.filter((m) => m !== cur)[0];
-      if (nxt) h += '<div class="nextcall"><b>下一場，請先叫號準備</b>第 ' + nxt[0] + ' 輪：<span class="r">紅 ' + teamText(st, nxt[2]) + '</span>　vs　<span class="b">藍 ' + teamText(st, nxt[3]) + "</span></div>";
+      if (nxt) h += '<div class="nextcall"><b>下一場（先請他們準備）</b>第 ' + nxt[0] + ' 輪：<span class="r">紅 ' + teamText(st, nxt[2]) + '</span>　vs　<span class="b">藍 ' + teamText(st, nxt[3]) + "</span></div>";
     }
-    h += "<h3>" + esc(D.groups[gk].short) + " 場地 " + field + " 全部對戰（" + (ms.length - pending.length) + " / " + ms.length + " 完成）</h3>" +
-      ms.map((m) => {
-        const key = R.matchKey(gk, m), rec = st[key], r = R.matchResult(st, gk, m), p = R.sumoPts(r || []);
-        const isCur = cur === m && !finFocus;
-        return '<div class="lrow' + (done(m) ? " done" : "") + (isCur ? " cur" : "") + '"><span class="rnd">第 ' + m[0] + ' 輪</span><span class="lt"><span class="r">紅 ' + teamText(st, m[2]) + '</span><span class="b">藍 ' + teamText(st, m[3]) + "</span></span>" +
-          '<span class="res">' + (done(m) ? "<b>" + p.red + ":" + p.blue + "</b>" + (rec && rec.pending ? '<small class="warn">待上傳</small>' : "") : isCur ? '<small class="mute">比賽中</small>' : "") + "</span>" +
-          (done(m) && !isCur ? (rec.src === "admin" ? '<small class="mute">計分台已改</small>' : '<button type="button" class="ghost small" data-act="js-edit" data-key="' + key + '">修改</button>') : "") + "</div>";
-      }).join("");
+    // 其他決賽、全部對戰：收在按鈕裡，平常不佔畫面
+    let more = "";
+    fins.filter((x) => x !== finFocus).forEach((x) => {
+      const y = F[x], key = "final:" + fam + ":" + x, locked = (st[key].payload || {}).adminRounds;
+      if (!y.winner) { more += '<div class="lrow"><span class="rnd">' + FINAL_NAME[x] + '</span><span class="lt"><span>' + (y.red && y.blue ? "紅 " + teamText(st, y.red) + "　vs　藍 " + teamText(st, y.blue) : "決賽在這個場地，隊伍產生後會出現在上方") + '</span></span><span class="res"><small class="mute">待比賽</small></span></div>'; return; }
+      more += '<div class="lrow done"><span class="rnd">' + FINAL_NAME[x] + '</span><span class="lt"><span class="r">紅 ' + teamText(st, y.red) + '</span><span class="b">藍 ' + teamText(st, y.blue) + '</span></span><span class="res"><b>' + y.r + ":" + y.b + "</b></span>" +
+        (locked ? '<small class="mute">計分台已改</small>' : '<button type="button" class="ghost small" data-act="js-edit" data-key="' + key + '">修改</button>') + "</div>";
+    });
+    more += ms.map((m) => {
+      const key = R.matchKey(gk, m), rec = st[key], r = R.matchResult(st, gk, m), p = R.sumoPts(r || []), ff = R.isForfeit(st, gk, m);
+      const isCur = cur === m && !finFocus;
+      return '<div class="lrow' + (done(m) ? " done" : "") + (isCur ? " cur" : "") + '"><span class="rnd">第 ' + m[0] + ' 輪</span><span class="lt"><span class="r">紅 ' + teamText(st, m[2]) + '</span><span class="b">藍 ' + teamText(st, m[3]) + "</span></span>" +
+        '<span class="res">' + (done(m) ? "<b>" + p.red + ":" + p.blue + "</b>" + (ff ? '<small class="warn">棄權</small>' : rec && rec.pending ? '<small class="warn">待上傳</small>' : "") : isCur ? '<small class="mute">比賽中</small>' : "") + "</span>" +
+        (done(m) && !isCur && !ff ? (rec && rec.src === "admin" ? '<small class="mute">計分台已改</small>' : '<button type="button" class="ghost small" data-act="js-edit" data-key="' + key + '">修改</button>') : "") + "</div>";
+    }).join("");
+    h += '<button type="button" class="ghost wide" data-act="js-all">' + (J.showAll ? "▲ 收起" : "▼ 看本場地全部對戰（" + (ms.length - pending.length) + " / " + ms.length + " 完成）") + "</button>" +
+      (J.showAll ? '<div class="allm">' + more + "</div>" : "");
     return h;
   }
 
   function judgeClick(act, b, key, st, ctx) {
+    if (act === "js-all") { J.showAll = !J.showAll; ctx.render(); return true; }
     if (act === "js-edit") {
       if (!confirm("要修改這場的成績嗎？要重新輸入，並請雙方選手重新確認。")) return true;
-      J.focus = b.dataset.key; JD[J.focus] = { r: [], cf: {} }; ctx.render(); window.scrollTo(0, 0); return true;
+      J.focus = b.dataset.key; JD[J.focus] = { r: [], cf: {}, go: true }; J.showAll = false; saveJD(); ctx.render(); window.scrollTo(0, 0); return true;
     }
     if (!key || !/^js-/.test(act)) return false;
     const d = JD[key] || (JD[key] = { r: [], cf: {} });
     const isFinal = key.startsWith("final:");
-    if (act === "js-pick") { d.r.push(b.dataset.v); d.tu = false; d.cf = {}; }
+    if (act === "js-call") { d.call = now(); d.arr = {}; d.pen = 0; }
+    else if (act === "js-arr") {
+      d.arr = d.arr || {}; d.arr[b.dataset.side] = !d.arr[b.dataset.side];
+      if (d.arr.R && d.arr.B) { d.go = true; d.rest = null; }
+    }
+    else if (act === "js-go") { d.go = true; }
+    else if (act === "js-round") { d.rs = now(); d.rsDone = false; d.rest = null; d.tu = false; }
+    else if (act === "js-pick") {
+      d.r.push(b.dataset.v); d.tu = false; d.cf = {}; d.rs = null;
+      d.go = true;
+      if (!isComplete(d, isFinal)) { d.rest = now(); d.restDone = false; } else d.rest = null;
+    }
     else if (act === "js-tu") d.tu = !d.tu;
-    else if (act === "js-redo") { d.r = d.r.slice(0, Number(b.dataset.i)); d.cf = {}; d.tu = false; }
-    else if (act === "js-cancel") { delete JD[key]; if (J.focus === key) J.focus = null; }
+    else if (act === "js-redo") { d.r = d.r.slice(0, Number(b.dataset.i)); d.cf = {}; d.tu = false; d.go = true; }
+    else if (act === "js-cancel") {
+      if ((d.r.length || d.call) && !confirm("這場清除重來？已輸入的回合會清掉。")) return true;
+      delete JD[key]; if (J.focus === key) J.focus = null;
+    }
     else if (act === "js-cf") {
       d.cf[b.dataset.side] = true;
       if (d.cf.R && d.cf.B) {
         const payload = isFinal ? { rounds: d.r.slice() } : { r: d.r.slice() };
+        saveJD();
         ctx.save([{ key, payload }]).then((res) => {
-          if (res && res.ok) { delete JD[key]; if (J.focus === key) J.focus = null; }
+          if (res && res.ok) { delete JD[key]; if (J.focus === key) J.focus = null; saveJD(); }
           ctx.toast(res.message, res.ok); ctx.render(); window.scrollTo(0, 0);
         });
         return true;
       }
     }
+    saveJD();
     ctx.render();
     return true;
   }
+
+  // 每 0.25 秒：更新倒數文字；叫號逾時自動判回合；回合時間到自動展開「比重量」
+  setInterval(() => {
+    let changed = false;
+    Object.keys(JD).forEach((key) => {
+      const d = JD[key], isFinal = key.startsWith("final:");
+      if (d.call && !d.go && !isComplete(d, isFinal)) {
+        const el = (now() - d.call) / 1000, arr = d.arr || {};
+        const late = arr.R && !arr.B ? "B" : arr.B && !arr.R ? "R" : null;   // 只有一方沒到才判
+        if (late) {
+          const want = el >= CALL_SEC ? Math.floor((el - CALL_SEC) / LATE_SEC) : 0;
+          while ((d.pen || 0) < want && !isComplete(d, isFinal)) {
+            d.r.push(late === "B" ? "XR" : "XB"); d.pen = (d.pen || 0) + 1; d.cf = {}; changed = true;
+            beep(2);
+            if (lastCtx) lastCtx.toast((late === "B" ? "藍方" : "紅方") + "逾時 → 判對手贏 1 回合", false);
+          }
+        }
+      }
+      if (d.rs && !d.rsDone && (now() - d.rs) / 1000 >= ROUND_SEC) { d.rsDone = true; if (!isFinal) d.tu = true; changed = true; beep(3); }
+      if (d.rest && !d.restDone && (now() - d.rest) / 1000 >= REST_SEC) { d.restDone = true; beep(1); }
+    });
+    if (changed) { saveJD(); if (lastCtx) lastCtx.render(); return; }
+    document.querySelectorAll("[data-tick]").forEach((el) => {
+      const d = JD[el.dataset.key]; if (!d) return;
+      const isFinal = el.dataset.key.startsWith("final:");
+      const t = el.dataset.tick === "call" && d.call ? callText(d) : el.dataset.tick === "round" && d.rs ? roundText(d, isFinal) : el.dataset.tick === "rest" && d.rest ? restText(d) : null;
+      if (t) { el.textContent = t.txt; el.classList.toggle("late", t.cls === "late"); }
+    });
+  }, 250);
 
   // ====================== 公開頁：對戰表、我的隊伍 ======================
   function scheduleHTML(st, gk, o) {
@@ -355,7 +475,7 @@ window.GRG_UI = (function () {
     if (!ms.length) return '<p class="mute">沒有對戰</p>';
     return rounds.map((rd) => '<div class="rblock"><p class="rhead">第 ' + rd + " 輪</p>" + ms.filter((m) => m[0] === rd).sort((a, b) => a[1] - b[1]).map((m) => {
       const r = R.matchResult(st, gk, m), done = R.isDone(r), p = R.sumoPts(r || []);
-      const st1 = done ? '<span class="tag ok">已完成</span>' : live.has(m) ? '<span class="tag warn">比賽中</span>' : "";
+      const st1 = R.isForfeit(st, gk, m) ? '<span class="tag">棄權</span>' : done ? '<span class="tag ok">已完成</span>' : live.has(m) ? '<span class="tag warn">比賽中</span>' : "";
       const win = done ? (p.red > p.blue ? "R" : p.blue > p.red ? "B" : "") : "";
       return '<div class="mrow' + (done ? " done" : live.has(m) ? " live" : "") + '"><div class="mh"><span>' + (gk === "R" ? "遙控場地 " : "場地 ") + m[1] + "</span>" + st1 + "</div>" +
         '<div class="mt"><span class="tm r' + (win === "R" ? " win" : "") + (o.me === m[2] ? " me" : "") + '">' + teamText(st, m[2]) + '</span><b class="sc">' + (r ? p.red + " : " + p.blue : "vs") + '</b><span class="tm b' + (win === "B" ? " win" : "") + (o.me === m[3] ? " me" : "") + '">' + teamText(st, m[3]) + "</span></div></div>";
@@ -495,7 +615,7 @@ window.GRG_UI = (function () {
   }
 
   // 正在輸入（游標在輸入框、碼錶在跑）時，背景更新不要重畫輸入區
-  const busy = (root) => LE.run || ME.run || Object.keys(JD).some((k) => JD[k].r.length) || (document.activeElement && root.contains(document.activeElement) && /INPUT|SELECT/.test(document.activeElement.tagName));
+  const busy = (root) => LE.run || ME.run || (Object.keys(JD).length > 0 && !!root.querySelector(".card.now")) || (document.activeElement && root.contains(document.activeElement) && /INPUT|SELECT/.test(document.activeElement.tagName));
 
   function toast(msg, ok) {
     let el = document.getElementById("toast");

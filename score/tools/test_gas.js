@@ -166,6 +166,25 @@ ok("紀錄分頁每筆都有寫（含被拒絕的）", () => {
   assert.ok(rows.length >= 20 && rows.some((r) => String(r[4]).startsWith("拒絕")) && rows.some((r) => r[4] === "成功"));
 });
 
+ok("裁判電話錯 10 次才鎖；計分台可解鎖；登入成功清掉錯誤次數", () => {
+  for (let i = 0; i < 9; i++) assert.strictEqual(post({ action: "score.login", nickname: "裁判十一", phone: "0900000000" }).message, "電話號碼不符");
+  assert.ok(post({ action: "score.login", nickname: "裁判十一", phone: "0912000011" }).ok);           // 第 10 次前登入成功 → 歸零
+  for (let i = 0; i < 10; i++) post({ action: "score.login", nickname: "裁判十一", phone: "0900000000" });
+  assert.ok(post({ action: "score.login", nickname: "裁判十一", phone: "0912000011" }).message.includes("太多次"));
+  assert.ok(!post({ action: "score.unlock", nickname: "裁判十一", phone: "0912000011" }).ok);         // 裁判自己不能解
+  assert.ok(post({ action: "score.unlock", admin: PW(), nickname: "裁判十一" }).ok);
+  assert.ok(post({ action: "score.login", nickname: "裁判十一", phone: "0912000011" }).ok);
+  // 崗位認領網站維持原本的 fail_ 計數（不受影響）
+  assert.ok(!("fail_裁判十一" in cacheStore));
+});
+
+ok("棄權：只有計分台能設，判對手 3:0", () => {
+  const r = post({ action: "score.put", nickname: "裁判七", phone: "0912000007", items: [{ key: "absent:EB03", payload: { on: true } }] });
+  assert.ok(!r.results[0].ok);
+  const r2 = post({ action: "score.put", admin: PW(), items: [{ key: "absent:EB03", payload: { on: true } }] });
+  assert.ok(r2.results[0].ok && r2.state["absent:EB03"].payload.on === true);
+});
+
 ok("計分台密碼錯 10 次鎖住", () => {
   for (let i = 0; i < 10; i++) post({ action: "score.login", admin: "bad" });
   assert.ok(post({ action: "score.login", admin: PW() }).message.includes("太多次"));
