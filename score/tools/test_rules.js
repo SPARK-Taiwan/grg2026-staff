@@ -96,13 +96,13 @@ ok("決賽配對、三戰兩勝、頒獎名單（國小）", () => {
   assert.strictEqual(f.champion, "EA02"); assert.strictEqual(f.runnerUp, "EA01");
   assert.deepStrictEqual(f.thirds.sort(), ["EB01", "EB02"]);
   const aw = R.sumoAwards(D, st, "E");
-  assert.strictEqual(aw.length, 21);
+  assert.strictEqual(aw.length, 20);            // 10/10 魏文瑜棄賽，國小 20 隊
   const t = (cat, title) => aw.filter((x) => x.cat.includes(cat) && x.title === title).map((x) => x.code);
   assert.deepStrictEqual(t("總名次", "季軍").sort(), ["EB01", "EB02"]);
   assert.deepStrictEqual(t("A 組", "第一名"), ["EA03"]);      // A 組預賽第 3 名
   assert.deepStrictEqual(t("A 組", "優勝"), ["EA06", "EA07", "EA08"]);
   assert.deepStrictEqual(t("A 組", "表現優異"), ["EA09", "EA10"]);
-  assert.deepStrictEqual(t("B 組", "表現優異"), ["EB09", "EB10", "EB11"]);
+  assert.deepStrictEqual(t("B 組", "表現優異"), ["EB09", "EB10"]);
   assert.ok(!aw.some((x) => x.title === "殿軍"));
 });
 
