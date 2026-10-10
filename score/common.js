@@ -283,13 +283,18 @@ window.GRG_UI = (function () {
     // 決賽
     const fins = ["SF1", "SF2", "F"].filter((x) => ((st["final:" + fam + ":" + x] || {}).payload || {}).field === slot);
     const F = fins.length ? R.finals(D, st, fam) : null;
-    const finFocus = fins.find((x) => J.focus === "final:" + fam + ":" + x) || fins.find((x) => !F[x].winner);
+    // 決賽要雙方隊伍都產生了才接手畫面；事先指派場地時，預賽照常進行
+    const finFocus = fins.find((x) => J.focus === "final:" + fam + ":" + x) || fins.find((x) => !F[x].winner && F[x].red && F[x].blue);
     if (finFocus) {
       const x = F[finFocus], key = "final:" + fam + ":" + finFocus;
       h += nowCard(st, key, x.red, x.blue, (x.winner ? "修改決賽成績" : "決賽") + "｜" + FINAL_NAME[finFocus], FAM_NAME[fam] + "・三戰兩勝", true, !!x.winner);
     }
     fins.filter((x) => x !== finFocus).forEach((x) => {
       const y = F[x], key = "final:" + fam + ":" + x, locked = (st[key].payload || {}).adminRounds;
+      if (!y.winner) {                                   // 還沒比：只提示，不給修改
+        h += '<div class="lrow"><span class="rnd">' + FINAL_NAME[x] + '</span><span class="lt"><span>' + (y.red && y.blue ? "紅 " + teamText(st, y.red) + "　vs　藍 " + teamText(st, y.blue) : "決賽在這個場地進行，對戰隊伍產生後會出現在上方") + '</span></span><span class="res"><small class="mute">待比賽</small></span></div>';
+        return;
+      }
       h += '<div class="lrow done"><span class="rnd">' + FINAL_NAME[x] + '</span><span class="lt"><span class="r">紅 ' + teamText(st, y.red) + '</span><span class="b">藍 ' + teamText(st, y.blue) + '</span></span><span class="res"><b>' + y.r + ":" + y.b + "</b></span>" +
         (locked ? '<small class="mute">計分台已改</small>' : '<button type="button" class="ghost small" data-act="js-edit" data-key="' + key + '">修改</button>') + "</div>";
     });
