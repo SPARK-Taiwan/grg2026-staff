@@ -23,16 +23,19 @@
   const TOTAL_NAMES = { 1: "冠軍", 2: "亞軍", 3: "季軍" };
 
   // ---------- 場地指派 ----------
-  // 上午 am:1–15 → 崗位 #04–#18；下午遙控 pm:R1–R6 → #11–#16（網站原安排）；
-  // 循跡 pm:L1–L3 → #07、#08、#10（#18 循跡助理可協助）；MR → #04、#05（#06、#17 MR 助理可協助）
+  // 上午 am:1–15 → 崗位 #04–#18；10/11 場地 7 改備用、#10 取消 → am:7 不指派（要用時由計分台「場地指派」設定）。
+  // 下午（10/11 裁判上下午位置不變，同 staff-site/roles.js）：遙控 pm:R1–R6 → #11–#16；循跡 A/B/C（pm:L1–L3）→ #07、#08、#09；MR → #04、#05、#06
   function defaultSlots() {
     const s = {};
-    for (let i = 1; i <= 15; i++) s["am:" + i] = [i + 3];
+    for (let i = 1; i <= 15; i++) s["am:" + i] = i === 7 ? [] : [i + 3];
     for (let i = 1; i <= 6; i++) s["pm:R" + i] = [i + 10];
-    s["pm:L1"] = [7, 18]; s["pm:L2"] = [8, 18]; s["pm:L3"] = [10, 18];
-    s["pm:MR"] = [4, 5, 6, 17];
+    s["pm:L1"] = [7]; s["pm:L2"] = [8]; s["pm:L3"] = [9];
+    s["pm:MR"] = [4, 5, 6];
     return s;
   }
+  // 報到處抽籤人員（10/11）：#01–#03 可以用自己的帳號登錄抽籤（只能抽籤，不能改成績）
+  const DRAW_ROLES = [1, 2, 3];
+  const LINE_NAME = { 1: "A", 2: "B", 3: "C" };   // 循跡場地 pm:L1–L3 對外叫 循跡 A／B／C（10/11）
   function slotsOf(state) {
     const s = defaultSlots();
     const a = state["assign"];
@@ -44,7 +47,7 @@
     if (sess === "am") return "上午 場地" + f;
     if (f === "MR") return "下午 MR 場地";
     if (f[0] === "R") return "下午 遙控" + f.slice(1);
-    return "下午 循跡" + f.slice(1);
+    return "下午 循跡" + (LINE_NAME[f.slice(1)] || f.slice(1));
   }
   function sumoSlot(gk, field) { return gk === "R" ? "pm:R" + field : "am:" + field; }
 
@@ -304,7 +307,7 @@
     return list;
   }
 
-  const API = { RANKS, TOTAL_NAMES, defaultSlots, slotsOf, slotLabel, sumoSlot, teamById, teamOfCode, sumoPts, matchKey, matchResult, isAbsent, isForfeit,
+  const API = { RANKS, TOTAL_NAMES, DRAW_ROLES, LINE_NAME, defaultSlots, slotsOf, slotLabel, sumoSlot, teamById, teamOfCode, sumoPts, matchKey, matchResult, isAbsent, isForfeit,
     isDone, groupStandings, tiesNeedingWeight, fieldQueue, FAMILY, seeds, finals, boWinner, sumoAwards, lineEval, lineCmp,
     lineRanking, lineAwards, MR_ITEMS, mrMax, mrValid, mrClamp, mrEval, mrCmp, mrRanking, mrAwards };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
@@ -389,15 +392,19 @@
       if (err) return fail(err);
       const cur = st[key];
       if (!who.admin) {
-        if (ADMIN_ONLY[kind] || p === null) return fail("只有計分台可以修改");
-        const slots = R.slotsOf(st);
         const roles = (who.roles || []).map(Number);
-        const mine = judgeSlots(kind, parts, cur).some((s) => (slots[s] || []).some((r) => roles.indexOf(Number(r)) >= 0));
-        if (!mine) return fail("這不是你負責的場地");
-        if (kind === "final") {
-          if (cur.payload.adminRounds) return fail("計分台已修改這場，請找計分台");
-          p = Object.assign({}, cur.payload, { rounds: p.rounds || [] });
-        } else if (cur && cur.src === "admin") return fail("計分台已修改這筆，請找計分台");
+        // 10/11 報到處抽籤人員（#01–#03）可以登錄、改正抽籤（含清除）；其他資料照舊
+        const drawer = kind === "draw" && roles.some((r) => R.DRAW_ROLES.indexOf(r) >= 0);
+        if (!drawer) {
+          if (ADMIN_ONLY[kind] || p === null) return fail("只有計分台可以修改");
+          const slots = R.slotsOf(st);
+          const mine = judgeSlots(kind, parts, cur).some((s) => (slots[s] || []).some((r) => roles.indexOf(Number(r)) >= 0));
+          if (!mine) return fail("這不是你負責的場地");
+          if (kind === "final") {
+            if (cur.payload.adminRounds) return fail("計分台已修改這場，請找計分台");
+            p = Object.assign({}, cur.payload, { rounds: p.rounds || [] });
+          } else if (cur && cur.src === "admin") return fail("計分台已修改這筆，請找計分台");
+        }
       }
       const row = p === null ? null : { kind, payload: p, by: who.admin ? "計分台" : who.nick, src: who.admin ? "admin" : "judge", time: now };
       if (row) st[key] = row; else delete st[key];

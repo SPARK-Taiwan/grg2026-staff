@@ -76,15 +76,19 @@
       if (err) return fail(err);
       const cur = st[key];
       if (!who.admin) {
-        if (ADMIN_ONLY[kind] || p === null) return fail("只有計分台可以修改");
-        const slots = R.slotsOf(st);
         const roles = (who.roles || []).map(Number);
-        const mine = judgeSlots(kind, parts, cur).some((s) => (slots[s] || []).some((r) => roles.indexOf(Number(r)) >= 0));
-        if (!mine) return fail("這不是你負責的場地");
-        if (kind === "final") {
-          if (cur.payload.adminRounds) return fail("計分台已修改這場，請找計分台");
-          p = Object.assign({}, cur.payload, { rounds: p.rounds || [] });
-        } else if (cur && cur.src === "admin") return fail("計分台已修改這筆，請找計分台");
+        // 10/11 報到處抽籤人員（#01–#03）可以登錄、改正抽籤（含清除）；其他資料照舊
+        const drawer = kind === "draw" && roles.some((r) => R.DRAW_ROLES.indexOf(r) >= 0);
+        if (!drawer) {
+          if (ADMIN_ONLY[kind] || p === null) return fail("只有計分台可以修改");
+          const slots = R.slotsOf(st);
+          const mine = judgeSlots(kind, parts, cur).some((s) => (slots[s] || []).some((r) => roles.indexOf(Number(r)) >= 0));
+          if (!mine) return fail("這不是你負責的場地");
+          if (kind === "final") {
+            if (cur.payload.adminRounds) return fail("計分台已修改這場，請找計分台");
+            p = Object.assign({}, cur.payload, { rounds: p.rounds || [] });
+          } else if (cur && cur.src === "admin") return fail("計分台已修改這筆，請找計分台");
+        }
       }
       const row = p === null ? null : { kind, payload: p, by: who.admin ? "計分台" : who.nick, src: who.admin ? "admin" : "judge", time: now };
       if (row) st[key] = row; else delete st[key];

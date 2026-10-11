@@ -76,25 +76,9 @@
   // ---------- 各分頁 ----------
   const chips = (list, cur, attr) => '<div class="slots noprint">' + list.map(([v, l]) => '<button type="button" class="' + (v === cur ? "on" : "") + '" data-' + attr + '="' + v + '">' + l + "</button>").join("") + "</div>";
   const POOLS = { E: ["EA", "EB"], J: ["J"], R: ["R"] };
-  const POOL_NAME = { E: "國小自動組（上午）", J: "國高中自動組（上午）", R: "遙控組（下午）" };
 
   function drawView(st) {
-    const codes = [].concat(...POOLS[drawPool].map((g) => D.groups[g].codes));
-    const codeOf = {};
-    codes.forEach((c) => { const d = st["draw:" + c]; if (d && d.payload.team) codeOf[d.payload.team] = c; });
-    const teams = D.teams[drawPool];
-    const n = teams.filter((t) => codeOf[t.id]).length;
-    return chips([["E", "國小自動組"], ["J", "國高中自動組"], ["R", "遙控組"]], drawPool, "pool") +
-      "<h2>" + POOL_NAME[drawPool] + '　<span class="mute small">已登錄 ' + n + " / " + teams.length + "</span></h2>" +
-      '<p class="note">隊伍抽到籤後，在該隊選它的代號（選了就存）。選錯直接改選；代號被別隊用了會先問你。</p>' +
-      (API.demo ? '<p class="noprint"><button type="button" class="ghost small" id="demoDraw">示範：三組一鍵完成抽籤（隨機）</button></p>' : "") +
-      '<table class="tbl"><thead><tr><th>隊伍</th><th>學校／單位</th><th style="width:150px">抽到的代號</th></tr></thead><tbody>' +
-      teams.map((t) => "<tr><td>" + UI.plainTeam(t) + (t.level && drawPool !== "E" ? ' <span class="tag">' + t.level + "</span>" : "") + "</td><td class='mute'>" + esc(t.unit) + "</td><td>" +
-        '<select data-draw="' + t.id + '"><option value="">—</option>' + codes.map((c) => {
-          const owner = (st["draw:" + c] || {}).payload;
-          const taken = owner && owner.team && owner.team !== t.id;
-          return '<option value="' + c + '"' + (codeOf[t.id] === c ? " selected" : "") + ">" + c + (taken ? "（已被選）" : "") + "</option>";
-        }).join("") + "</select></td></tr>").join("") + "</tbody></table>";
+    return UI.drawHTML(st, drawPool, API.demo ? '<p class="noprint"><button type="button" class="ghost small" id="demoDraw">示範：三組一鍵完成抽籤（隨機）</button></p>' : "");
   }
 
   function sumoView(st) {
@@ -264,17 +248,8 @@
     const el = e.target, st = state();
     if (el.id === "fieldFilter") { fieldFilter = el.value; render(); return; }
     if (el.dataset.draw) {
-      const team = el.dataset.draw, code = el.value;
-      const items = [];
-      Object.keys(st).filter((k) => k.startsWith("draw:") && st[k].payload.team === team && k !== "draw:" + code).forEach((k) => items.push({ key: k, payload: null }));
-      if (code) {
-        const owner = (st["draw:" + code] || {}).payload;
-        if (owner && owner.team && owner.team !== team) {
-          const o = R.teamById(D, owner.team);
-          if (!confirm(code + " 目前是「" + (o ? o.name : owner.team) + "」，要改給這隊嗎？（原本那隊會變成未登錄）")) { render(); return; }
-        }
-        items.push({ key: "draw:" + code, payload: { team } });
-      }
+      const items = UI.drawItems(st, el.dataset.draw, el.value);
+      if (!items) { render(); return; }
       saveAndRender(items);
     }
   });

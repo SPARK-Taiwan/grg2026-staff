@@ -51,10 +51,15 @@
 
   const state = () => API.overlay(server.state || {}, auth && auth.nickname);
   const myRoles = () => Object.keys(server.claims || {}).filter((id) => server.claims[id] === (auth && auth.nickname)).map(Number);
+  // 10/11 報到處抽籤人員（#01–#03）多一個「抽籤登錄」分頁
+  let drawPool = new Date().getHours() * 60 + new Date().getMinutes() >= 12 * 60 + 30 ? "R" : "E";
   function mySlots() {
     const all = R.slotsOf(state()), roles = myRoles();
-    return Object.keys(all).filter((s) => all[s].some((r) => roles.indexOf(Number(r)) >= 0));
+    const list = Object.keys(all).filter((s) => all[s].some((r) => roles.indexOf(Number(r)) >= 0));
+    if (roles.some((r) => R.DRAW_ROLES.indexOf(r) >= 0)) list.unshift("draw");
+    return list;
   }
+  const slotName = (s) => (s === "draw" ? "抽籤登錄" : R.slotLabel(s));
 
   // ---------- 登入 ----------
   function showLogin() {
@@ -96,11 +101,12 @@
   }
 
   function slotView(st, s) {
+    if (s === "draw") return UI.drawHTML(st, drawPool);
     const [sess, f] = s.split(":");
     let gk = null, field = null;
     if (sess === "am") {
       field = Number(f);
-      // 場地 7 上午沒有預賽、只有國小決賽（10/11 B 組改固定場地 4–6）：沒有預賽的場地依指派到這裡的決賽決定組別
+      // 場地 7 上午沒有預賽（10/11 改備用場地）：計分台把決賽指派到這種場地時，依決賽決定組別
       gk = ["EA", "EB", "J"].find((g) => D.groups[g].fields.indexOf(field) >= 0) ||
         (["SF1", "SF2", "F"].some((x) => ((st["final:J:" + x] || {}).payload || {}).field === s) ? "J" : "EB");
     }
@@ -125,7 +131,7 @@
       const pm = new Date().getHours() * 60 + new Date().getMinutes() >= 12 * 60 + 30;
       slot = slots.find((s) => s.startsWith(pm ? "pm" : "am")) || slots[0];
     }
-    $("slots").innerHTML = slots.map((s) => '<button type="button" class="' + (s === slot ? "on" : "") + '" data-slot="' + s + '">' + esc(R.slotLabel(s)) + "</button>").join("");
+    $("slots").innerHTML = slots.map((s) => '<button type="button" class="' + (s === slot ? "on" : "") + '" data-slot="' + s + '">' + esc(slotName(s)) + "</button>").join("");
     $("view").innerHTML = slotView(st, slot);
     queueText();
   }
@@ -134,6 +140,18 @@
     const b = e.target.closest("[data-slot]");
     if (!b) return;
     slot = b.dataset.slot; API.store.set("grgScoreSlot", slot); render();
+  });
+
+  $("view").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-pool]");
+    if (b) { drawPool = b.dataset.pool; render(); }
+  });
+  $("view").addEventListener("change", (e) => {
+    const el = e.target;
+    if (!el.dataset.draw) return;
+    const items = UI.drawItems(state(), el.dataset.draw, el.value);
+    if (!items) { render(); return; }
+    save(items).then((r) => { UI.toast(r.message, r.ok); render(); });
   });
 
   async function save(items) {

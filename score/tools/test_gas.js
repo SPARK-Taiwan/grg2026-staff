@@ -43,6 +43,9 @@ for (const f of ["apps-script/Code.gs", "apps-script/Score.gs"]) vm.runInContext
 
 let n = 0;
 const ok = (name, fn) => { fn(); n++; console.log("✓", name); };
+// 10/11 #07、#16、#17 改主辦指定；以下測試沿用「裁判七＝#07」，所以測試環境把 #07 讓出來
+assert.strictEqual(ctx.FIXED[7], "治平_禹安"); assert.strictEqual(ctx.FIXED[16], "師大_阿帕頓諾迪"); assert.strictEqual(ctx.FIXED[17], "輔大_PEI");
+delete ctx.FIXED[7];
 const post = (req) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(req) } }).text);
 const get = (p) => JSON.parse(ctx.doGet({ parameter: p || {} }).text);
 const clearCache = () => { for (const k in cacheStore) delete cacheStore[k]; };
@@ -86,7 +89,7 @@ ok("裁判只能寫自己場地（#07 = 上午場地 4）", () => {
     { key: "sumo:EB:1:4", payload: { r: ["R", "B", "TR"] } },   // 場地 4 → OK
     { key: "sumo:EA:1:1", payload: { r: ["R", "R", "R"] } },    // 場地 1 → 拒絕
     { key: "draw:EB01", payload: { team: "E01" } },             // 抽籤 → 只有計分台
-    { key: "line:L01:1", payload: { t: [25, 50], done: false } }, // #07 預設是循跡 1 → OK
+    { key: "line:L01:1", payload: { t: [25, 50], done: false } }, // #07 下午是循跡 1 → OK
     { key: "mr:M01:1", payload: { c: { W: 1 }, time: 50 } },    // MR → 拒絕
   ] });
   assert.deepStrictEqual(r.results.map((x) => x.ok), [true, false, false, true, false]);
@@ -188,6 +191,34 @@ ok("棄權：只有計分台能設，判對手 3:0", () => {
 ok("計分台密碼錯 10 次鎖住", () => {
   for (let i = 0; i < 10; i++) post({ action: "score.login", admin: "bad" });
   assert.ok(post({ action: "score.login", admin: PW() }).message.includes("太多次"));
+});
+
+ok("抽籤人員 #01–#03 可以登錄、清除抽籤；裁判不行；抽籤人員不能改成績", () => {
+  sheets["名單"].getRange(6, 1, 1, 2).setValues([["抽籤三", "0912000003"]]);
+  claim.getRange(4, 3, 1, 1).setValues([["抽籤三"]]);     // #03
+  const me = { nickname: "抽籤三", phone: "0912000003" };
+  const r = post({ action: "score.put", ...me, items: [{ key: "draw:J05", payload: { team: "J01" } }, { key: "sumo:J:1:8", payload: { r: ["R", "R", "R"] } }] });
+  assert.deepStrictEqual(r.results.map((x) => x.ok), [true, false]);
+  assert.strictEqual(r.state["draw:J05"].by, "抽籤三");
+  const r2 = post({ action: "score.put", ...me, items: [{ key: "draw:J05", payload: null }] });
+  assert.ok(r2.results[0].ok && !("draw:J05" in r2.state));
+  const r3 = post({ action: "score.put", nickname: "裁判十一", phone: "0912000011", items: [{ key: "draw:J06", payload: { team: "J02" } }] });
+  assert.ok(!r3.results[0].ok);
+});
+
+ok("取消的崗位 #10：不能認領；setup 把舊認領搬到 #15（#15 已有人就不搬）", () => {
+  const d = ctx.decide_({ action: "claim", nickname: "甲", phone: "0911222333", roleId: 10 }, { staff: { 甲: "0911222333" }, claims: {}, arrange: [], fails: 0 }, new Date("2026-10-11T12:00:00+08:00"));
+  assert.ok(!d.ok && d.message.includes("已取消"), d.message);
+  const nickAt = (id) => claim.getRange(id + 1, 3, 1, 1).getValues()[0][0];
+  claim.getRange(11, 2, 1, 2).setValues([["相撲裁判 場地7", "沒崗位"]]);
+  ctx.setup();
+  assert.strictEqual(nickAt(15), "沒崗位");
+  assert.strictEqual(nickAt(10), "");
+  assert.strictEqual(claim.getRange(11, 2, 1, 1).getValues()[0][0], "（已取消）");
+  claim.getRange(11, 2, 1, 2).setValues([["相撲裁判 場地7（國小決賽）", "MR甲"]]);
+  ctx.setup();
+  assert.strictEqual(nickAt(15), "沒崗位");   // #15 已有人：不覆蓋
+  assert.strictEqual(nickAt(10), "");
 });
 
 console.log(`\n全部通過：${n} 項`);

@@ -627,6 +627,41 @@ window.GRG_UI = (function () {
     toast.t = setTimeout(() => { el.className = ""; }, ok ? 2200 : 4500);
   }
 
+  // ---------- 抽籤登錄（計分台、報到處抽籤人員 #01–#03 共用）----------
+  const DRAW_POOLS = { E: ["EA", "EB"], J: ["J"], R: ["R"] };
+  const DRAW_POOL_NAME = { E: "國小自動組（上午）", J: "國高中自動組（上午）", R: "遙控組（下午）" };
+  function drawHTML(st, pool, extra) {
+    const codes = [].concat(...DRAW_POOLS[pool].map((g) => D.groups[g].codes));
+    const codeOf = {};
+    codes.forEach((c) => { const d = st["draw:" + c]; if (d && d.payload.team) codeOf[d.payload.team] = c; });
+    const teams = D.teams[pool];
+    const n = teams.filter((t) => codeOf[t.id]).length;
+    return '<div class="slots noprint">' + [["E", "國小自動組"], ["J", "國高中自動組"], ["R", "遙控組"]].map(([v, l]) => '<button type="button" class="' + (v === pool ? "on" : "") + '" data-pool="' + v + '">' + l + "</button>").join("") + "</div>" +
+      "<h2>" + DRAW_POOL_NAME[pool] + '　<span class="mute small">已登錄 ' + n + " / " + teams.length + "</span></h2>" +
+      '<p class="note">隊伍抽到籤後，在該隊選它的代號（選了就存）。選錯直接改選；代號被別隊用了會先問你。</p>' + (extra || "") +
+      '<table class="tbl"><thead><tr><th>隊伍</th><th>學校／單位</th><th style="width:150px">抽到的代號</th></tr></thead><tbody>' +
+      teams.map((t) => "<tr><td>" + plainTeam(t) + (t.level && pool !== "E" ? ' <span class="tag">' + t.level + "</span>" : "") + "</td><td class='mute'>" + esc(t.unit) + "</td><td>" +
+        '<select data-draw="' + t.id + '"><option value="">—</option>' + codes.map((c) => {
+          const owner = (st["draw:" + c] || {}).payload;
+          const taken = owner && owner.team && owner.team !== t.id;
+          return '<option value="' + c + '"' + (codeOf[t.id] === c ? " selected" : "") + ">" + c + (taken ? "（已被選）" : "") + "</option>";
+        }).join("") + "</select></td></tr>").join("") + "</tbody></table>";
+  }
+  // 某隊改選代號 → 要送出的資料（清掉這隊舊的代號）；代號已是別隊的會先問，取消就回傳 null
+  function drawItems(st, team, code) {
+    const items = [];
+    Object.keys(st).filter((k) => k.startsWith("draw:") && st[k].payload.team === team && k !== "draw:" + code).forEach((k) => items.push({ key: k, payload: null }));
+    if (code) {
+      const owner = (st["draw:" + code] || {}).payload;
+      if (owner && owner.team && owner.team !== team) {
+        const o = R.teamById(D, owner.team);
+        if (!confirm(code + " 目前是「" + (o ? o.name : owner.team) + "」，要改給這隊嗎？（原本那隊會變成未登錄）")) return null;
+      }
+      items.push({ key: "draw:" + code, payload: { team } });
+    }
+    return items;
+  }
+
   return { judgeFieldHTML, scheduleHTML, myTeamHTML, teamText, JD, J, esc, pad, hhmm, hhmmss, f2, FAM_GROUPS, FAM_NAME, FINAL_NAME, teamHTML, plainTeam, fieldsHTML, standingsHTML, finalsHTML, lineHTML, mrHTML,
-    sumoMatchHTML, finalEditHTML, lineEditorHTML, mrEditorHTML, bindEditors, busy, toast, drafts, LE, ME };
+    sumoMatchHTML, finalEditHTML, lineEditorHTML, mrEditorHTML, bindEditors, busy, toast, drafts, LE, ME, DRAW_POOLS, drawHTML, drawItems };
 })();

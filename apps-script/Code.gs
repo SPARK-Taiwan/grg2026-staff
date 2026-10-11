@@ -23,15 +23,18 @@ var ARRANGE_NAME = '由主辦單位安排';
 var ROLE_NAMES = {
   1: '機動＋危機處理1', 2: '機動＋危機處理2', 3: '2F 門口把關',
   4: '相撲裁判 場地1', 5: '相撲裁判 場地2', 6: '相撲裁判 場地3', 7: '相撲裁判 場地4', 8: '相撲裁判 場地5',
-  9: '相撲裁判 場地6', 10: '相撲裁判 場地7（國小決賽）', 11: '相撲裁判 場地8', 12: '相撲裁判 場地9', 13: '相撲裁判 場地10',
+  9: '相撲裁判 場地6', 10: '（已取消）', 11: '相撲裁判 場地8', 12: '相撲裁判 場地9', 13: '相撲裁判 場地10',
   14: '相撲裁判 場地11', 15: '相撲裁判 場地12', 16: '相撲裁判 場地13', 17: '相撲裁判 場地14', 18: '相撲裁判 場地15'
 };
 var N = Object.keys(ROLE_NAMES).length;               // 崗位數
-// 改過名的崗位：舊名 → 新名（setup 搬移認領時用，避免改名後認領掉了）
-var RENAMED = { '相撲裁判 場地7': '相撲裁判 場地7（國小決賽）' };   // 10/11 國小 B 組改場地 4–6，場地 7 上午只有決賽
+// 10/11 場地 7 改備用：取消 #10。編號保留（認領分頁一列一號），只是不能認領
+var CANCELLED = { 10: true };
+// 搬家的認領：舊崗位名稱 → 新崗位名稱（setup 依名稱搬移；新崗位已有人就不搬，變成未認領）
+// 10/11 元智_Lou 從 #10（場地7）搬到 #15（場地12）；「場地7（國小決賽）」是 10/11 曾短暫用過的名稱
+var MOVED = { '相撲裁判 場地7': '相撲裁判 場地12', '相撲裁判 場地7（國小決賽）': '相撲裁判 場地12' };
 
 // 主辦單位直接指定的崗位：網站上不能被認領或取消，這些人也不能自己改選
-var FIXED = { 1: '台科_Winnie', 2: '北市_小鹿', 4: '彰師_余紹銨', 5: '中央_林星佑' };
+var FIXED = { 1: '台科_Winnie', 2: '北市_小鹿', 4: '彰師_余紹銨', 5: '中央_林星佑', 7: '治平_禹安', 16: '師大_阿帕頓諾迪', 17: '輔大_PEI' };   // 10/11 加 #07、#16、#17
 
 function fixedNick_(nick) {
   for (var id in FIXED) if (FIXED[id] === nick) return id;
@@ -103,6 +106,7 @@ function decide_(req, state, now) {
 
   var roleId = String(parseInt(req.roleId, 10));
   if (!ROLE_NAMES[roleId]) return { ok: false, message: '請選擇崗位' };
+  if (CANCELLED[roleId]) return { ok: false, message: '這個崗位已取消，請選擇其他崗位' };
   if (claims[roleId] && claims[roleId] !== nick) return { ok: false, message: '這個崗位已被 ' + claims[roleId] + ' 認領' };
   if (mine === roleId) return done('你已經認領 ' + ROLE_NAMES[roleId]);
   release();
@@ -232,15 +236,17 @@ function setup() {
   ensure('名單', ['暱稱', '電話']);
   var claim = ensure('認領', ['編號', '崗位', '暱稱', '認領時間']);
   // 依「崗位名稱」把現有的認領搬到目前的編號（編號順序改過也不會對錯人）
-  var byName = {};
+  var byName = {}, moved = [];
   if (claim.getLastRow() >= 2) {
     claim.getRange(2, 1, claim.getLastRow() - 1, 4).getValues().forEach(function (r) {
       var name = String(r[1]).replace('（主辦指定）', '').trim();
-      name = RENAMED[name] || name;
-      if (name && r[2]) byName[name] = [r[2], r[3]];
+      if (!name || !r[2]) return;
+      if (MOVED[name]) moved.push([MOVED[name], [r[2], r[3]]]);
+      else byName[name] = [r[2], r[3]];
     });
     claim.getRange(2, 1, claim.getLastRow() - 1, 4).clearContent();
   }
+  moved.forEach(function (m) { if (!byName[m[0]]) byName[m[0]] = m[1]; });
   var rows = [];
   for (var i = 1; i <= N; i++) {
     var keep = byName[ROLE_NAMES[i]] || ['', ''];

@@ -210,8 +210,9 @@ ok("棄權：沒打的場次判對手 3:0，已有成績保留，排名與場地
 
 ok("場地指派：預設與覆蓋", () => {
   const s = R.slotsOf({});
-  assert.deepStrictEqual(s["am:1"], [4]); assert.deepStrictEqual(s["pm:R1"], [11]); assert.deepStrictEqual(s["pm:R6"], [16]);
-  assert.deepStrictEqual(s["pm:L3"], [10, 18]); assert.deepStrictEqual(s["pm:MR"], [4, 5, 6, 17]);
+  assert.deepStrictEqual(s["am:1"], [4]); assert.deepStrictEqual(s["am:7"], []); assert.deepStrictEqual(s["pm:R1"], [11]); assert.deepStrictEqual(s["pm:R6"], [16]);
+  assert.deepStrictEqual(s["pm:L1"], [7]); assert.deepStrictEqual(s["pm:L3"], [9]); assert.deepStrictEqual(s["pm:MR"], [4, 5, 6]);   // 10/11 上下午位置不變
+  assert.strictEqual(R.slotLabel("pm:L2"), "下午 循跡B");
   const s2 = R.slotsOf({ assign: { payload: { slots: { "pm:L1": [9] } } } });
   assert.deepStrictEqual(s2["pm:L1"], [9]);
 });
