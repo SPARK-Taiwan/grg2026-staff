@@ -44,7 +44,7 @@ for (const f of ["apps-script/Code.gs", "apps-script/Score.gs"]) vm.runInContext
 let n = 0;
 const ok = (name, fn) => { fn(); n++; console.log("✓", name); };
 // 10/11 #07、#16、#17 改主辦指定；以下測試沿用「裁判七＝#07」，所以測試環境把 #07 讓出來
-assert.strictEqual(ctx.FIXED[7], "治平_禹安"); assert.strictEqual(ctx.FIXED[16], "師大_阿帕頓諾迪"); assert.strictEqual(ctx.FIXED[17], "輔大_PEI");
+assert.strictEqual(ctx.FIXED[7], "治平_禹安"); assert.strictEqual(ctx.FIXED[16], "臺師_阿帕頓諾迪"); assert.strictEqual(ctx.FIXED[17], "輔大_PEI");
 delete ctx.FIXED[7];
 const post = (req) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(req) } }).text);
 const get = (p) => JSON.parse(ctx.doGet({ parameter: p || {} }).text);
