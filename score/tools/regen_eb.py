@@ -1,12 +1,13 @@
 """10/10 魏文瑜（老莫機器人）棄賽 → 國小組 21→20 隊，B 組 11→10 隊。
 B 組改用和 A 組同樣性質的 10 隊賽程（15 輪、每輪 3 場、每隊輪空 6 輪、最長連打 2 輪），
-代號重新對應、場地 4–7 每輪輪流休息 1 張（裁判不用調動）。就地改寫 相撲自動組循環賽程.md 的 B 組段落與摘要。
+代號重新對應。10/11 使用者改為和 A 組一樣固定 3 張場地：A 組場地 1/2/3 的那場 → B 組場地 4/5/6（場地 7 上午只留給國小決賽）。
+就地改寫 相撲自動組循環賽程.md 的 B 組段落與摘要。
 用法：py regen_eb.py 賽程.md [另一份.md ...]"""
 import re, sys
 from collections import defaultdict
 
 PERM = {1: 6, 2: 3, 3: 9, 4: 1, 5: 8, 6: 10, 7: 4, 8: 2, 9: 7, 10: 5}   # EA 代號 → EB 代號
-IDLE = [7, 6, 5, 4]                                                     # 第 1、2、3、4… 輪休息的場地（循環）
+FIELD = {1: 4, 2: 5, 3: 6}                                              # A 組場地 → B 組場地
 
 
 def parse(lines, title):
@@ -27,9 +28,8 @@ def build_eb(ea):
         rounds[r].append((f, "EB%02d" % PERM[int(a[2:])], "EB%02d" % PERM[int(b[2:])]))
     eb = []
     for r in sorted(rounds):
-        fields = [x for x in (4, 5, 6, 7) if x != IDLE[(r - 1) % 4]]
-        for (f0, a, b), f in zip(sorted(rounds[r]), fields):
-            eb.append([r, f, a, b])
+        for f0, a, b in sorted(rounds[r]):
+            eb.append([r, FIELD[f0], a, b])
     return eb
 
 
@@ -63,7 +63,7 @@ def table(rows, codes):
         if r not in first:
             first.add(r)
             idle = [c for c in codes if c not in per[r]]
-            note.append("輪空：" + ", ".join(idle) + "（場地%d 休息）" % IDLE[(r - 1) % 4])
+            note.append("輪空：" + ", ".join(idle))
         back = [c for c in (a, b) if c in per.get(r - 1, [])]
         if back: note.append("⚠ 連打：" + ", ".join(back))
         out.append("| 第 %d 輪 | 場地%d | %s | %s | [ ][ ][ ] | [ ][ ][ ] | %s |" % (r, f, a, b, "；".join(note)))
@@ -80,11 +80,13 @@ for path in sys.argv[1:]:
     # 換掉 B 組段落
     s = next(i for i, l in enumerate(lines) if l.startswith("## 國小自動組 B 組賽程表"))
     e = next(i for i in range(s + 1, len(lines)) if lines[i].startswith("## "))
-    lines[s:e] = ["## 國小自動組 B 組賽程表（場地4～場地7，代號 EB01～EB10；每輪 3 場，4 張場地輪流休息）", ""] + table(eb, codes) + [""]
+    lines[s:e] = ["## 國小自動組 B 組賽程表（場地4～場地6，代號 EB01～EB10）", ""] + table(eb, codes) + [""]
     txt = "\n".join(lines)
-    txt = re.sub(r"\| 國小自動組 B 組 \| 11 \| 55 \|[^\n]*",
-                 "| 國小自動組 B 組 | 10 | 45 | 場地4～場地7（4 張，每輪用 3 張輪替） | 15 | 9:45～11:00 | 11:12 | 每隊輪空 6 輪，最長連續 2 輪 |", txt)
+    txt = re.sub(r"\| 國小自動組 B 組 \| 1[01] \| [45]5 \|[^\n]*",
+                 "| 國小自動組 B 組 | 10 | 45 | 場地4～場地6（3 張） | 15 | 9:45～11:00 | 11:12 | 每隊輪空 6 輪，最長連續 2 輪 |", txt)
     txt = txt.replace("A 組（10 隊）、B 組（11 隊）", "A 組（10 隊）、B 組（10 隊）（10/10 魏文瑜（老莫機器人）棄賽，國小組由 21 隊改為 20 隊）")
-    txt = txt.replace("除最後一輪外每輪場地全滿", "除最後一輪外每輪場地全滿（國小 B 組每輪 3 場、場地 4–7 輪流休息 1 張）")
+    txt = txt.replace("（國小 B 組每輪 3 場、場地 4–7 輪流休息 1 張）", "")
+    if "場地 7 上午只用於國小決賽" not in txt:
+        txt = txt.replace("每張場地 1 位裁判，上午 15 位", "國小 B 組固定場地 4–6，場地 7 上午只用於國小決賽；每張場地 1 位裁判，上午 15 位")
     open(path, "w", encoding="utf-8").write(txt)
 print("ok")

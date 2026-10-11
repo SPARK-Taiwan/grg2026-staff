@@ -53,7 +53,7 @@ data = {
     "version": "2026-10-25",
     "groups": {
         "EA": {"name": "國小自動組 A 組", "short": "國小 A 組", "session": "am", "pool": "E", "codes": ["EA%02d" % i for i in range(1, 11)], "fields": [1, 2, 3]},
-        "EB": {"name": "國小自動組 B 組", "short": "國小 B 組", "session": "am", "pool": "E", "codes": ["EB%02d" % i for i in range(1, 11)], "fields": [4, 5, 6, 7]},
+        "EB": {"name": "國小自動組 B 組", "short": "國小 B 組", "session": "am", "pool": "E", "codes": ["EB%02d" % i for i in range(1, 11)], "fields": [4, 5, 6]},
         "J": {"name": "國高中自動組", "short": "國高中組", "session": "am", "pool": "J", "codes": ["J%02d" % i for i in range(1, 18)], "fields": list(range(8, 16))},
         "R": {"name": "遙控組", "short": "遙控組", "session": "pm", "pool": "R", "codes": ["R%02d" % i for i in range(1, 15)], "fields": list(range(1, 7))},
     },

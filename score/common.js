@@ -368,6 +368,7 @@ window.GRG_UI = (function () {
     const cur = focus || pending[0] || null;
     if (!finFocus) {
       if (cur) h += nowCard(st, R.matchKey(gk, cur), cur[2], cur[3], focus && done(focus) ? "修改成績" : "現在比賽", "第 " + cur[0] + " 輪・場地 " + field, false, !!(focus && done(focus)));
+      else if (!ms.length) h += '<div class="banner okb">本場地上午只有決賽，決賽隊伍產生後會出現在這裡</div>';
       else h += '<div class="banner okb">本場地預賽全部完成 ✓' + (fins.length ? "　決賽隊伍產生後會出現在這裡" : "") + "</div>";
       const nxt = pending.filter((m) => m !== cur)[0];
       if (nxt) h += '<div class="nextcall"><b>下一場（先請他們準備）</b>第 ' + nxt[0] + ' 輪：<span class="r">紅 ' + teamText(st, nxt[2]) + '</span>　vs　<span class="b">藍 ' + teamText(st, nxt[3]) + "</span></div>";

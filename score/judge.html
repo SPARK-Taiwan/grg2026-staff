@@ -98,7 +98,12 @@
   function slotView(st, s) {
     const [sess, f] = s.split(":");
     let gk = null, field = null;
-    if (sess === "am") { field = Number(f); gk = ["EA", "EB", "J"].find((g) => D.groups[g].fields.indexOf(field) >= 0); }
+    if (sess === "am") {
+      field = Number(f);
+      // 場地 7 上午沒有預賽、只有國小決賽（10/11 B 組改固定場地 4–6）：沒有預賽的場地依指派到這裡的決賽決定組別
+      gk = ["EA", "EB", "J"].find((g) => D.groups[g].fields.indexOf(field) >= 0) ||
+        (["SF1", "SF2", "F"].some((x) => ((st["final:J:" + x] || {}).payload || {}).field === s) ? "J" : "EB");
+    }
     else if (f[0] === "R") { gk = "R"; field = Number(f.slice(1)); }
     if (gk) return UI.judgeFieldHTML(st, gk, field, s);
     if (f === "MR") return "<h2>MR 計分</h2>" + UI.mrEditorHTML(st, { judge: true });
