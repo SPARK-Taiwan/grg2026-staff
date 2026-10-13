@@ -27,8 +27,10 @@
     s["pm:MR"] = [4, 5, 6];
     return s;
   }
-  // 報到處抽籤人員（10/11）：#01–#03 可以用自己的帳號登錄抽籤（只能抽籤，不能改成績）
-  const DRAW_ROLES = [1, 2, 3];
+  // 報到處抽籤人員（10/11）：#01–#03 可以用自己的帳號登錄抽籤（只能抽籤，不能改成績）；10/13 加 #10（報到支援）
+  const DRAW_ROLES = [1, 2, 3, 10];
+  // 裁判替補（10/13）：兩位小組長 #01、#02 和 #10 每個場地都能輸入成績（計分台改過的照樣鎖住）
+  const SUB_ROLES = [1, 2, 10];
   const LINE_NAME = { 1: "A", 2: "B", 3: "C" };   // 循跡場地 pm:L1–L3 對外叫 循跡 A／B／C（10/11）
   function slotsOf(state) {
     const s = defaultSlots();
@@ -301,7 +303,7 @@
     return list;
   }
 
-  const API = { RANKS, TOTAL_NAMES, DRAW_ROLES, LINE_NAME, defaultSlots, slotsOf, slotLabel, sumoSlot, teamById, teamOfCode, sumoPts, matchKey, matchResult, isAbsent, isForfeit,
+  const API = { RANKS, TOTAL_NAMES, DRAW_ROLES, SUB_ROLES, LINE_NAME, defaultSlots, slotsOf, slotLabel, sumoSlot, teamById, teamOfCode, sumoPts, matchKey, matchResult, isAbsent, isForfeit,
     isDone, groupStandings, tiesNeedingWeight, fieldQueue, FAMILY, seeds, finals, boWinner, sumoAwards, lineEval, lineCmp,
     lineRanking, lineAwards, MR_ITEMS, mrMax, mrValid, mrClamp, mrEval, mrCmp, mrRanking, mrAwards };
   if (typeof module !== "undefined" && module.exports) module.exports = API;

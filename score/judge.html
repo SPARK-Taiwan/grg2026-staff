@@ -55,7 +55,8 @@
   let drawPool = new Date().getHours() * 60 + new Date().getMinutes() >= 12 * 60 + 30 ? "R" : "E";
   function mySlots() {
     const all = R.slotsOf(state()), roles = myRoles();
-    const list = Object.keys(all).filter((s) => all[s].some((r) => roles.indexOf(Number(r)) >= 0));
+    const sub = roles.some((r) => R.SUB_ROLES.indexOf(r) >= 0);   // 10/13 裁判替補（#01、#02、#10）：每個場地都列出來
+    const list = Object.keys(all).filter((s) => sub || all[s].some((r) => roles.indexOf(Number(r)) >= 0));
     if (roles.some((r) => R.DRAW_ROLES.indexOf(r) >= 0)) list.unshift("draw");
     return list;
   }

@@ -209,6 +209,27 @@ ok("抽籤人員 #01–#03 可以登錄、清除抽籤；裁判不行；抽籤�
   assert.ok(!r3.results[0].ok);
 });
 
+ok("裁判替補 #01、#02、#10：每個場地都能寫、也能抽籤；計分台改過的照樣鎖住", () => {
+  assert.strictEqual(JSON.stringify(ctx.GRG_RULES.SUB_ROLES), "[1,2,10]");
+  sheets["名單"].getRange(7, 1, 1, 2).setValues([["北醫_Kang Lun", "0912150326"]]);   // #10 是主辦指定
+  const me = { nickname: "北醫_Kang Lun", phone: "0912150326" };
+  const r = post({ action: "score.put", ...me, items: [
+    { key: "sumo:EA:1:1", payload: { r: ["R", "R", "B"] } },      // 上午場地 1（#04 的）
+    { key: "sumo:R:1:3", payload: { r: ["B", "B", "B"] } },       // 下午遙控 3（#13 的）
+    { key: "line:L01:2", payload: { t: [26, 51], done: false } }, // 循跡
+    { key: "mr:M01:2", payload: { c: { W: 1 }, time: 60 } },      // MR
+    { key: "draw:J07", payload: { team: "J03" } },                // 抽籤
+  ] });
+  assert.deepStrictEqual(r.results.map((x) => x.ok), [true, true, true, true, true]);
+  assert.strictEqual(r.state["sumo:EA:1:1"].by, "北醫_Kang Lun");
+  clearCache();   // 前面的測試把計分台密碼鎖住了
+  assert.ok(post({ action: "score.put", admin: PW(), items: [{ key: "sumo:EA:1:1", payload: { r: ["B", "B", "B"] } }] }).results[0].ok);
+  const r2 = post({ action: "score.put", ...me, items: [{ key: "sumo:EA:1:1", payload: { r: ["R", "R", "R"] } }, { key: "sumo:EA:1:2", payload: null }] });
+  assert.deepStrictEqual(r2.results.map((x) => x.ok), [false, false]);   // 計分台改過 → 鎖住；刪除只限計分台
+  const r3 = post({ action: "score.put", nickname: "裁判十一", phone: "0912000011", items: [{ key: "sumo:EA:1:2", payload: { r: ["R", "R", "R"] } }] });
+  assert.ok(!r3.results[0].ok);   // 一般裁判還是只能寫自己場地
+});
+
 ok("#10 恢復（2F 門口＋報到支援，主辦指定）；setup 把舊「場地7」認領搬到 #15（#15 已有人就不搬）", () => {
   const d = ctx.decide_({ action: "claim", nickname: "甲", phone: "0911222333", roleId: 10 }, { staff: { 甲: "0911222333" }, claims: {}, arrange: [], fails: 0 }, new Date("2026-10-11T12:00:00+08:00"));
   assert.ok(!d.ok && d.message.includes("主辦單位指定"), d.message);
