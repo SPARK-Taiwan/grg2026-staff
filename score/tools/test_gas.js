@@ -43,9 +43,12 @@ for (const f of ["apps-script/Code.gs", "apps-script/Score.gs"]) vm.runInContext
 
 let n = 0;
 const ok = (name, fn) => { fn(); n++; console.log("✓", name); };
-// 10/11 #07、#16、#17 改主辦指定；以下測試沿用「裁判七＝#07」，所以測試環境把 #07 讓出來
-assert.strictEqual(ctx.FIXED[7], "治平_禹安"); assert.strictEqual(ctx.FIXED[16], "臺師_阿帕頓諾迪"); assert.strictEqual(ctx.FIXED[17], "輔大_PEI");
-delete ctx.FIXED[7];
+// 10/13 18 個崗位全部主辦指定（#10 恢復成「2F 門口＋報到支援」）；以下測試沿用「抽籤三＝#03、裁判七＝#07、裁判十一＝#11」，所以測試環境把這三格讓出來
+assert.strictEqual(Object.keys(ctx.FIXED).length, 18); assert.strictEqual(Object.keys(ctx.CANCELLED).length, 0);
+assert.strictEqual(ctx.FIXED[6], "臺師_阿帕頓諾迪"); assert.strictEqual(ctx.FIXED[8], "長庚_鴻比"); assert.strictEqual(ctx.FIXED[10], "北醫_Kang Lun");
+assert.strictEqual(ctx.FIXED[14], "元智_LouLou"); assert.strictEqual(ctx.FIXED[15], "輔大_魚魚"); assert.strictEqual(ctx.FIXED[16], "輔大_PEIPEI");
+assert.strictEqual(ctx.FIXED[17], "中原_呵呵"); assert.strictEqual(ctx.FIXED[18], "中原_郁郁");
+delete ctx.FIXED[3]; delete ctx.FIXED[7]; delete ctx.FIXED[11];
 const post = (req) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(req) } }).text);
 const get = (p) => JSON.parse(ctx.doGet({ parameter: p || {} }).text);
 const clearCache = () => { for (const k in cacheStore) delete cacheStore[k]; };
@@ -206,19 +209,23 @@ ok("抽籤人員 #01–#03 可以登錄、清除抽籤；裁判不行；抽籤�
   assert.ok(!r3.results[0].ok);
 });
 
-ok("取消的崗位 #10：不能認領；setup 把舊認領搬到 #15（#15 已有人就不搬）", () => {
+ok("#10 恢復（2F 門口＋報到支援，主辦指定）；setup 把舊「場地7」認領搬到 #15（#15 已有人就不搬）", () => {
   const d = ctx.decide_({ action: "claim", nickname: "甲", phone: "0911222333", roleId: 10 }, { staff: { 甲: "0911222333" }, claims: {}, arrange: [], fails: 0 }, new Date("2026-10-11T12:00:00+08:00"));
-  assert.ok(!d.ok && d.message.includes("已取消"), d.message);
+  assert.ok(!d.ok && d.message.includes("主辦單位指定"), d.message);
   const nickAt = (id) => claim.getRange(id + 1, 3, 1, 1).getValues()[0][0];
+  const fixed15 = ctx.FIXED[15]; delete ctx.FIXED[15]; claim.getRange(16, 3, 1, 1).setValues([[""]]);   // #15 是主辦指定，測搬移時先讓出來
   claim.getRange(11, 2, 1, 2).setValues([["相撲裁判 場地7", "沒崗位"]]);
   ctx.setup();
   assert.strictEqual(nickAt(15), "沒崗位");
-  assert.strictEqual(nickAt(10), "");
-  assert.strictEqual(claim.getRange(11, 2, 1, 1).getValues()[0][0], "（已取消）");
+  assert.strictEqual(nickAt(10), "北醫_Kang Lun");
+  assert.strictEqual(claim.getRange(11, 2, 1, 1).getValues()[0][0], "2F 門口＋報到支援（主辦指定）");
   claim.getRange(11, 2, 1, 2).setValues([["相撲裁判 場地7（國小決賽）", "MR甲"]]);
   ctx.setup();
   assert.strictEqual(nickAt(15), "沒崗位");   // #15 已有人：不覆蓋
-  assert.strictEqual(nickAt(10), "");
+  assert.strictEqual(nickAt(10), "北醫_Kang Lun");
+  ctx.FIXED[15] = fixed15;
+  ctx.setup();
+  assert.strictEqual(nickAt(15), "輔大_魚魚");   // 主辦指定蓋過舊認領
 });
 
 console.log(`\n全部通過：${n} 項`);
