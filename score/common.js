@@ -425,10 +425,13 @@ window.GRG_UI = (function () {
       if (d.cf.R && d.cf.B) {
         const payload = isFinal ? { rounds: d.r.slice() } : { r: d.r.slice() };
         saveJD();
-        ctx.save([{ key, payload }]).then((res) => {
-          if (res && res.ok) { delete JD[key]; if (J.focus === key) J.focus = null; saveJD(); }
-          ctx.toast(res.message, res.ok); ctx.render(); window.scrollTo(0, 0);
-        });
+        // 10/24 雙方 ✓ 先顯示 1 秒（防誤按），再存進手機佇列、換下一場；上傳在背景進行（約 2–3 秒），不用等；沒被接受會在頁首紅條顯示
+        ctx.render();
+        setTimeout(() => {
+          const p = ctx.save([{ key, payload }]);
+          delete JD[key]; if (J.focus === key) J.focus = null; saveJD(); ctx.render(); window.scrollTo(0, 0);
+          p.then((res) => { ctx.toast(res.message, res.ok); ctx.render(); });
+        }, 1000);
         return true;
       }
     }
