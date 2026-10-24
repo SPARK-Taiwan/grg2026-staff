@@ -57,7 +57,7 @@
     const all = R.slotsOf(state()), roles = myRoles();
     const sub = roles.some((r) => R.SUB_ROLES.indexOf(r) >= 0) || R.SUB_NICKS.indexOf(auth && auth.nickname) >= 0;   // 10/13 裁判替補（#01、#02、#10）、10/24 主辦人員：每個場地都列出來
     const list = Object.keys(all).filter((s) => sub || all[s].some((r) => roles.indexOf(Number(r)) >= 0));
-    if (roles.some((r) => R.DRAW_ROLES.indexOf(r) >= 0)) list.unshift("draw");
+    if (roles.some((r) => R.DRAW_ROLES.indexOf(r) >= 0) || R.DRAW_NICKS.indexOf(auth && auth.nickname) >= 0) list.unshift("draw");   // 10/24 機動人員
     return list;
   }
   const slotName = (s) => (s === "draw" ? "抽籤登錄" : R.slotLabel(s));
@@ -122,7 +122,7 @@
     $("login").hidden = true; $("main").hidden = false;   // 已登入過（重新整理、手機重開）直接顯示主畫面
     const st = state(), roles = myRoles(), slots = mySlots();
     $("who").textContent = auth.nickname;
-    $("roleText").textContent = roles.length ? "崗位 " + roles.map((r) => "#" + UI.pad(r)).join("、") : R.SUB_NICKS.indexOf(auth.nickname) >= 0 ? "主辦人員：全場成績登錄" : "";
+    $("roleText").textContent = roles.length ? "崗位 " + roles.map((r) => "#" + UI.pad(r)).join("、") : R.DRAW_NICKS.indexOf(auth.nickname) >= 0 ? "機動人員：全場成績登錄＋抽籤登錄" : R.SUB_NICKS.indexOf(auth.nickname) >= 0 ? "主辦人員：全場成績登錄" : "";
     if (!slots.length) {
       $("slots").innerHTML = "";
       $("view").innerHTML = '<div class="banner">你目前沒有負責計分的場地。如有異動請找計分台。</div>';

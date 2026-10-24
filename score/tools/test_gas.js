@@ -231,7 +231,7 @@ ok("裁判替補 #01、#02、#10：每個場地都能寫、也能抽籤；計分
 });
 
 ok("主辦人員 大雄、蜜蜂、腳踏車（不佔崗位）：每個場地都能寫成績；不能抽籤、不能刪除", () => {
-  assert.strictEqual(JSON.stringify(ctx.GRG_RULES.SUB_NICKS), '["大雄","蜜蜂","腳踏車"]');
+  assert.strictEqual(JSON.stringify(ctx.GRG_RULES.SUB_NICKS), '["大雄","蜜蜂","腳踏車","治平機動"]');
   sheets["名單"].getRange(8, 1, 1, 2).setValues([["蜜蜂", "0983407283"]]);
   const me = { nickname: "蜜蜂", phone: "0983407283" };
   assert.deepStrictEqual(post({ action: "score.login", ...me }).roles, []);
@@ -245,6 +245,22 @@ ok("主辦人員 大雄、蜜蜂、腳踏車（不佔崗位）：每個場地都
   ] });
   assert.deepStrictEqual(r.results.map((x) => x.ok), [true, true, true, true, false, false]);
   assert.strictEqual(r.state["sumo:EA:1:3"].by, "蜜蜂");
+});
+
+ok("機動人員 治平機動（不佔崗位）：每個場地都能寫成績，也能抽籤；不能刪成績", () => {
+  sheets["名單"].getRange(9, 1, 1, 2).setValues([["治平機動", "0987654321"]]);
+  const me = { nickname: "治平機動", phone: "0987654321" };
+  const r = post({ action: "score.put", ...me, items: [
+    { key: "sumo:EA:2:1", payload: { r: ["R", "B", "R"] } },      // 上午場地
+    { key: "line:L03:2", payload: { t: [26, 51], done: false } }, // 循跡
+    { key: "mr:M03:2", payload: { c: { W: 1 }, time: 60 } },      // MR
+    { key: "draw:J09", payload: { team: "J05" } },                // 抽籤：可以
+    { key: "sumo:EA:2:2", payload: null },                        // 刪除：不行
+  ] });
+  assert.deepStrictEqual(r.results.map((x) => x.ok), [true, true, true, true, false]);
+  assert.strictEqual(r.state["draw:J09"].by, "治平機動");
+  const r2 = post({ action: "score.put", nickname: "蜜蜂", phone: "0983407283", items: [{ key: "draw:J10", payload: { team: "J06" } }] });
+  assert.ok(!r2.results[0].ok);   // 主辦人員（大雄、蜜蜂、腳踏車）還是不能抽籤
 });
 
 ok("#10 恢復（2F 門口＋報到支援，主辦指定）；setup 把舊「場地7」認領搬到 #15（#15 已有人就不搬）", () => {

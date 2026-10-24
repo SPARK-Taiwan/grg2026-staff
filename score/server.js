@@ -78,7 +78,7 @@
       if (!who.admin) {
         const roles = (who.roles || []).map(Number);
         // 10/11 報到處抽籤人員（#01–#03）可以登錄、改正抽籤（含清除）；其他資料照舊
-        const drawer = kind === "draw" && roles.some((r) => R.DRAW_ROLES.indexOf(r) >= 0);
+        const drawer = kind === "draw" && (roles.some((r) => R.DRAW_ROLES.indexOf(r) >= 0) || R.DRAW_NICKS.indexOf(who.nick) >= 0);   // 10/24 機動人員用暱稱判斷
         if (!drawer) {
           if (ADMIN_ONLY[kind] || p === null) return fail("只有計分台可以修改");
           const slots = R.slotsOf(st);
