@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GRG 2026 MR 抽題器</title>
+<link rel="stylesheet" href="score.css">
+<style>
+/* 10/24 MR2・MR3 抽題器：白、綠大方塊隨機放在 4 個空白 X 格（規則第 4 節官方配置圖），其餘方塊固定 */
+.drawbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 12px 0; }
+.seg button.on { background: var(--navy); color: #fff; }
+.seg button { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+.big { font-size: 20px; padding: 14px 26px; }
+.result { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin: 6px 0 2px; }
+.result .no { font-size: 42px; font-weight: 900; color: var(--red); }
+.result .pos { font-size: 18px; font-weight: 700; }
+.map { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfd; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 14px; margin: 8px 0; }
+.legend i { display: inline-block; width: 14px; height: 14px; border: 1px solid #333; vertical-align: -2px; margin-right: 4px; }
+.pick { display: flex; gap: 6px; flex-wrap: wrap; }
+.pick button { min-width: 48px; }
+.hist { font-size: 13px; color: var(--mute); }
+.print-only { display: none; }
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  .screen-only { display: none !important; }
+  .print-only { display: block; }
+  .pp { break-after: page; } .pp:last-child { break-after: auto; }
+  .pp h2 { margin: 0 0 6px; font-size: 22px; }
+}
+</style>
+</head>
+<body>
+<header class="top screen-only"><div class="wrap">
+  <p class="kicker">GRG 2026 臺灣推廣科學競賽｜MR2・MR3 垂直農場</p>
+  <h1>MR 抽題器</h1>
+  <p class="meta">白色、綠色大方塊各 2 顆，隨機放在 4 個空白 X 格（①–④），共 6 種方案；藍、粉、黃大方塊和所有小方塊位置固定。</p>
+</div></header>
+
+<main class="wrap screen-only">
+  <div class="drawbar">
+    <div class="seg" id="rounds"></div>
+    <button type="button" class="big" id="draw">抽題</button>
+    <button type="button" class="ghost" id="print">列印 6 種方案（擲骰子備用）</button>
+  </div>
+  <div class="result" id="result"></div>
+  <svg class="map" id="map" viewBox="95 165 1240 612" role="img" aria-label="MR 場地方塊起始位置"></svg>
+  <div class="legend">
+    <span><i style="background:#fff"></i>白色大方塊</span><span><i style="background:#3fae49"></i>綠色大方塊</span>
+    <span><i style="background:#7fd3ee"></i>藍色大方塊</span><span><i style="background:#f4a6d7"></i>粉色大方塊</span><span><i style="background:#f7ea48"></i>黃色大方塊</span>
+    <span>田字＝4 顆小方塊（白色那 2 處是 2 顆疊在 2 顆上）；長條＝2 顆小方塊</span>
+  </div>
+  <h3>其他手機要顯示同一個方案</h3>
+  <p class="note">抽題只需一支手機抽；其他裁判或大螢幕按下面的號碼就會顯示同一個方案。沒網路、沒手機時，印出 6 種方案擲骰子（點數＝方案號碼）。</p>
+  <div class="pick" id="pick"></div>
+  <p class="hist" id="hist"></p>
+</main>
+
+<div class="print-only" id="printArea"></div>
+
+<script>
+(function () {
+  // 官方配置圖（規則第 4 節）座標
+  const FIELD = { x: 103, y: 175, w: 1224, h: 592 };
+  const CIRCLES = [[357, 326], [795, 409], [1146, 327], [276, 610], [664, 687]];
+  const FIXED_LARGE = [["#7fd3ee", 357, 195], ["#7fd3ee", 275, 742], ["#f4a6d7", 1146, 195], ["#f4a6d7", 1277, 325], ["#f7ea48", 533, 686], ["#f7ea48", 795, 686]];
+  // [x, y, 編號, 編號位置 dx,dy, 白／綠字位置 dx,dy]（避開圓圈）
+  const RANDOM = [[226, 325, "①", -62, -22, 0, 62], [795, 278, "②", 40, -22, -62, 10], [927, 408, "③", 40, -22, 0, 62], [144, 609, "④", 40, -40, 0, 62]];
+  const SMALL4 = [["#ffffff", 225, 241], ["#ffffff", 989, 624], ["#f7ea48", 1015, 325], ["#f7ea48", 667, 408], ["#f39a1e", 427, 483], ["#f39a1e", 430, 717], ["#e3262b", 276, 477], ["#5b2d8e", 1275, 410]];
+  const SMALL2 = [["#e3262b", 467, 206], ["#e3262b", 531, 307], ["#5b2d8e", 667, 219], ["#5b2d8e", 924, 219]];
+  // 方案 1–6：白色放哪兩格（其餘兩格放綠色）
+  const PLANS = [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]];
+  const W = "#ffffff", G = "#3fae49";
+  const KEY = "grgMrDraw";
+  let store = {}; try { store = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) {}
+  let round = store.round || 1;
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {} };
+  const $ = (id) => document.getElementById(id);
+
+  function xbox(fill, x, y, s) {
+    return '<rect x="' + (x - s / 2) + '" y="' + (y - s / 2) + '" width="' + s + '" height="' + s + '" fill="' + fill + '" stroke="#222" stroke-width="2"/>' +
+      '<path d="M' + (x - s / 2) + " " + (y - s / 2) + "L" + (x + s / 2) + " " + (y + s / 2) + "M" + (x + s / 2) + " " + (y - s / 2) + "L" + (x - s / 2) + " " + (y + s / 2) + '" stroke="#222" stroke-width="1.5"/>';
+  }
+  function svgFor(plan) {
+    let h = '<rect x="' + FIELD.x + '" y="' + FIELD.y + '" width="' + FIELD.w + '" height="' + FIELD.h + '" fill="#fff" stroke="#14253a" stroke-width="3"/>' +
+      '<rect x="1069" y="611" width="156" height="156" fill="#eef1f4" stroke="#14253a" stroke-width="2"/><text x="1147" y="695" font-size="22" text-anchor="middle" fill="#5e6b78">LOGO</text>';
+    CIRCLES.forEach(([x, y]) => { h += '<circle cx="' + x + '" cy="' + y + '" r="78" fill="none" stroke="#111" stroke-width="9"/><path d="M' + (x - 78) + " " + y + "H" + (x + 78) + "M" + x + " " + (y - 78) + "V" + (y + 78) + '" stroke="#111" stroke-width="7"/>'; });
+    SMALL2.forEach(([c, x, y]) => { h += '<rect x="' + (x - 15) + '" y="' + (y - 7) + '" width="14" height="14" fill="' + c + '" stroke="#222"/><rect x="' + (x + 1) + '" y="' + (y - 7) + '" width="14" height="14" fill="' + c + '" stroke="#222"/>'; });
+    SMALL4.forEach(([c, x, y]) => { [[-14, -14], [0, -14], [-14, 0], [0, 0]].forEach(([dx, dy]) => { h += '<rect x="' + (x + dx) + '" y="' + (y + dy) + '" width="14" height="14" fill="' + c + '" stroke="#222"/>'; }); });
+    FIXED_LARGE.forEach(([c, x, y]) => { h += xbox(c, x, y, 30); });
+    RANDOM.forEach(([x, y, lab, nx, ny, tx, ty], i) => {
+      const c = plan == null ? "#d5dbe1" : PLANS[plan - 1].indexOf(i) >= 0 ? W : G;
+      h += '<rect x="' + (x - 34) + '" y="' + (y - 34) + '" width="68" height="68" rx="8" fill="none" stroke="#e23b32" stroke-width="5"/>' + xbox(c, x, y, 40) +
+        '<text x="' + (x + nx) + '" y="' + (y + ny) + '" font-size="30" font-weight="900" fill="#e23b32">' + lab + "</text>";
+      if (plan != null) h += '<text x="' + (x + tx) + '" y="' + (y + ty) + '" font-size="26" font-weight="900" text-anchor="middle" fill="' + (c === W ? "#14253a" : "#1d7a2a") + '">' + (c === W ? "白" : "綠") + "</text>";
+    });
+    return h;
+  }
+  const posText = (plan) => RANDOM.map(([, , lab], i) => lab + (PLANS[plan - 1].indexOf(i) >= 0 ? "白" : "綠")).join("　");
+
+  function render() {
+    const cur = store["r" + round];
+    $("rounds").innerHTML = [1, 2].map((r) => '<button type="button" class="' + (r === round ? "on" : "") + '" data-r="' + r + '">第 ' + r + " 回合" + (store["r" + r] ? "：方案 " + store["r" + r].plan : "") + "</button>").join("");
+    $("draw").textContent = cur ? "重抽" : "抽題";
+    $("result").innerHTML = cur ? '<span class="no">方案 ' + cur.plan + '</span><span class="pos">' + posText(cur.plan) + '</span><span class="mute small">第 ' + round + " 回合｜" + cur.at + "</span>"
+      : '<span class="mute">第 ' + round + " 回合還沒抽題</span>";
+    $("map").innerHTML = svgFor(cur ? cur.plan : null);
+    $("pick").innerHTML = PLANS.map((_, i) => '<button type="button" class="ghost" data-p="' + (i + 1) + '">' + (i + 1) + "</button>").join("");
+    $("hist").textContent = (store.log || []).slice(-6).map((l) => l.at + " 第 " + l.round + " 回合 方案 " + l.plan + (l.how === "pick" ? "（手動）" : "")).join("｜");
+  }
+  function setPlan(plan, how) {
+    const at = new Date().toLocaleTimeString("zh-TW", { hour12: false });
+    store["r" + round] = { plan, at };
+    (store.log = store.log || []).push({ round, plan, at, how });
+    save(); render();
+  }
+  $("draw").addEventListener("click", () => {
+    if (store["r" + round] && !confirm("第 " + round + " 回合已經抽過（方案 " + store["r" + round].plan + "），確定要重抽？")) return;
+    const a = new Uint32Array(1); crypto.getRandomValues(a);
+    setPlan(1 + (a[0] % 6), "draw");
+  });
+  $("rounds").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; round = Number(b.dataset.r); store.round = round; save(); render(); });
+  $("pick").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; setPlan(Number(b.dataset.p), "pick"); });
+  $("print").addEventListener("click", () => {
+    $("printArea").innerHTML = PLANS.map((_, i) => '<div class="pp"><h2>GRG 2026 MR2・MR3 方案 ' + (i + 1) + "（骰子 " + (i + 1) + " 點）　" + posText(i + 1) + '</h2><svg viewBox="95 165 1240 612" style="width:100%">' + svgFor(i + 1) + "</svg></div>").join("");
+    window.print();
+  });
+  render();
+})();
+</script>
+</body>
+</html>

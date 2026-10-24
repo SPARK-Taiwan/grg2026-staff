@@ -113,7 +113,7 @@
     }
     else if (f[0] === "R") { gk = "R"; field = Number(f.slice(1)); }
     if (gk) return UI.judgeFieldHTML(st, gk, field, s);
-    if (f === "MR") return "<h2>MR 計分</h2>" + UI.mrEditorHTML(st, { judge: true });
+    if (f === "MR") return '<h2>MR 計分 <a class="small" href="mr-draw.html" target="_blank" rel="noopener">MR 抽題器</a></h2>' + UI.mrEditorHTML(st, { judge: true });   // 10/24 抽題器
     return "<h2>循跡計時</h2>" + UI.lineEditorHTML(st, { judge: true });
   }
 
