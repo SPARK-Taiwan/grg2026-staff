@@ -152,7 +152,7 @@
     if (!el.dataset.draw) return;
     const items = UI.drawItems(state(), el.dataset.draw, el.value);
     if (!items) { render(); return; }
-    save(items).then((r) => { UI.toast(r.message, r.ok); render(); });
+    save(items).then((r) => { UI.toast((items.auto && r.ok ? items.auto + "。" : "") + (r.message || ""), r.ok); render(); });
   });
 
   async function save(items) {

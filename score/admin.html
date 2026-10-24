@@ -71,7 +71,7 @@
       return bad.length ? { ok: false, message: bad.map((x) => x.message).join("、") } : { ok: true, message: "已儲存" };
     } catch (e) { return { ok: false, message: "連線失敗，沒有儲存，請再按一次" }; }
   }
-  const saveAndRender = (items) => save(items).then((r) => { UI.toast(r.message, r.ok); render(); return r; });
+  const saveAndRender = (items) => save(items).then((r) => { UI.toast((items.auto && r.ok ? items.auto + "。" : "") + (r.message || ""), r.ok); render(); return r; });   // 10/24 抽籤最後一隊自動登錄提示
 
   // ---------- 各分頁 ----------
   const chips = (list, cur, attr) => '<div class="slots noprint">' + list.map(([v, l]) => '<button type="button" class="' + (v === cur ? "on" : "") + '" data-' + attr + '="' + v + '">' + l + "</button>").join("") + "</div>";

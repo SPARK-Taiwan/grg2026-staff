@@ -638,14 +638,13 @@ window.GRG_UI = (function () {
     const n = teams.filter((t) => codeOf[t.id]).length;
     return '<div class="slots noprint">' + [["E", "國小自動組"], ["J", "國高中自動組"], ["R", "遙控組"]].map(([v, l]) => '<button type="button" class="' + (v === pool ? "on" : "") + '" data-pool="' + v + '">' + l + "</button>").join("") + "</div>" +
       "<h2>" + DRAW_POOL_NAME[pool] + '　<span class="mute small">已登錄 ' + n + " / " + teams.length + "</span></h2>" +
-      '<p class="note">隊伍抽到籤後，在該隊選它的代號（選了就存）。選錯直接改選；代號被別隊用了會先問你。</p>' + (extra || "") +
+      '<p class="note">隊伍抽到籤後，在該隊選它的代號（選了就存）。已被別隊選走的代號不會出現在選單裡；選錯直接改選，要換給別隊就先把原本那隊改回「—」。剩最後一隊時會自動登錄剩下的代號。</p>' + (extra || "") +
       '<table class="tbl"><thead><tr><th>隊伍</th><th>學校／單位</th><th style="width:150px">抽到的代號</th></tr></thead><tbody>' +
       teams.map((t) => "<tr><td>" + plainTeam(t) + (t.level && pool !== "E" ? ' <span class="tag">' + t.level + "</span>" : "") + "</td><td class='mute'>" + esc(t.unit) + "</td><td>" +
-        '<select data-draw="' + t.id + '"><option value="">—</option>' + codes.map((c) => {
+        '<select data-draw="' + t.id + '"><option value="">—</option>' + codes.filter((c) => {
           const owner = (st["draw:" + c] || {}).payload;
-          const taken = owner && owner.team && owner.team !== t.id;
-          return '<option value="' + c + '"' + (codeOf[t.id] === c ? " selected" : "") + ">" + c + (taken ? "（已被選）" : "") + "</option>";
-        }).join("") + "</select></td></tr>").join("") + "</tbody></table>";
+          return !(owner && owner.team && owner.team !== t.id);   // 10/24 已被別隊選走的代號不列出
+        }).map((c) => '<option value="' + c + '"' + (codeOf[t.id] === c ? " selected" : "") + ">" + c + "</option>").join("") + "</select></td></tr>").join("") + "</tbody></table>";
   }
   // 某隊改選代號 → 要送出的資料（清掉這隊舊的代號）；代號已是別隊的會先問，取消就回傳 null
   function drawItems(st, team, code) {
@@ -658,6 +657,20 @@ window.GRG_UI = (function () {
         if (!confirm(code + " 目前是「" + (o ? o.name : owner.team) + "」，要改給這隊嗎？（原本那隊會變成未登錄）")) return null;
       }
       items.push({ key: "draw:" + code, payload: { team } });
+    }
+    // 10/24 改完後同一組只剩 1 隊沒代號、1 個代號沒人用 → 自動登錄（items.auto 給畫面提示）
+    const pool = Object.keys(DRAW_POOLS).find((p) => D.teams[p].some((t) => t.id === team));
+    if (pool) {
+      const after = Object.assign({}, st);
+      items.forEach((it) => { if (it.payload) after[it.key] = { payload: it.payload }; else delete after[it.key]; });
+      const codes = [].concat(...DRAW_POOLS[pool].map((g) => D.groups[g].codes));
+      const used = new Set(), done = new Set();
+      codes.forEach((c) => { const p = (after["draw:" + c] || {}).payload; if (p && p.team) { used.add(c); done.add(p.team); } });
+      const leftTeams = D.teams[pool].filter((t) => !done.has(t.id)), leftCodes = codes.filter((c) => !used.has(c));
+      if (leftTeams.length === 1 && leftCodes.length === 1 && leftTeams[0].id !== team) {
+        items.push({ key: "draw:" + leftCodes[0], payload: { team: leftTeams[0].id } });
+        items.auto = "最後一隊「" + leftTeams[0].name + "」自動登錄為 " + leftCodes[0];
+      }
     }
     return items;
   }
