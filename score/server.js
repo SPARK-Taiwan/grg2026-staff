@@ -83,7 +83,7 @@
           if (ADMIN_ONLY[kind] || p === null) return fail("只有計分台可以修改");
           const slots = R.slotsOf(st);
           const js = judgeSlots(kind, parts, cur);
-          const sub = roles.some((r) => R.SUB_ROLES.indexOf(r) >= 0);   // 10/13 裁判替補：每個場地都算自己的
+          const sub = roles.some((r) => R.SUB_ROLES.indexOf(r) >= 0) || R.SUB_NICKS.indexOf(who.nick) >= 0;   // 10/13 裁判替補、10/24 主辦人員：每個場地都算自己的
           const mine = js.length > 0 && (sub || js.some((s) => (slots[s] || []).some((r) => roles.indexOf(Number(r)) >= 0)));
           if (!mine) return fail("這不是你負責的場地");
           if (kind === "final") {

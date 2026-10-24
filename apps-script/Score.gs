@@ -37,6 +37,8 @@
   const DRAW_ROLES = [1, 2, 3, 10];
   // 裁判替補（10/13）：兩位小組長 #01、#02 和 #10 每個場地都能輸入成績（計分台改過的照樣鎖住）
   const SUB_ROLES = [1, 2, 10];
+  // 10/24 主辦人員（不佔崗位，用暱稱判斷）：大雄、蜜蜂、腳踏車每個場地都能輸入成績，權限和裁判替補一樣（不含抽籤）
+  const SUB_NICKS = ["大雄", "蜜蜂", "腳踏車"];
   const LINE_NAME = { 1: "A", 2: "B", 3: "C" };   // 循跡場地 pm:L1–L3 對外叫 循跡 A／B／C（10/11）
   function slotsOf(state) {
     const s = defaultSlots();
@@ -309,7 +311,7 @@
     return list;
   }
 
-  const API = { RANKS, TOTAL_NAMES, DRAW_ROLES, SUB_ROLES, LINE_NAME, defaultSlots, slotsOf, slotLabel, sumoSlot, teamById, teamOfCode, sumoPts, matchKey, matchResult, isAbsent, isForfeit,
+  const API = { RANKS, TOTAL_NAMES, DRAW_ROLES, SUB_ROLES, SUB_NICKS, LINE_NAME, defaultSlots, slotsOf, slotLabel, sumoSlot, teamById, teamOfCode, sumoPts, matchKey, matchResult, isAbsent, isForfeit,
     isDone, groupStandings, tiesNeedingWeight, fieldQueue, FAMILY, seeds, finals, boWinner, sumoAwards, lineEval, lineCmp,
     lineRanking, lineAwards, MR_ITEMS, mrMax, mrValid, mrClamp, mrEval, mrCmp, mrRanking, mrAwards };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
@@ -401,7 +403,7 @@
           if (ADMIN_ONLY[kind] || p === null) return fail("只有計分台可以修改");
           const slots = R.slotsOf(st);
           const js = judgeSlots(kind, parts, cur);
-          const sub = roles.some((r) => R.SUB_ROLES.indexOf(r) >= 0);   // 10/13 裁判替補：每個場地都算自己的
+          const sub = roles.some((r) => R.SUB_ROLES.indexOf(r) >= 0) || R.SUB_NICKS.indexOf(who.nick) >= 0;   // 10/13 裁判替補、10/24 主辦人員：每個場地都算自己的
           const mine = js.length > 0 && (sub || js.some((s) => (slots[s] || []).some((r) => roles.indexOf(Number(r)) >= 0)));
           if (!mine) return fail("這不是你負責的場地");
           if (kind === "final") {

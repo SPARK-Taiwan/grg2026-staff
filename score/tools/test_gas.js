@@ -230,6 +230,23 @@ ok("裁判替補 #01、#02、#10：每個場地都能寫、也能抽籤；計分
   assert.ok(!r3.results[0].ok);   // 一般裁判還是只能寫自己場地
 });
 
+ok("主辦人員 大雄、蜜蜂、腳踏車（不佔崗位）：每個場地都能寫成績；不能抽籤、不能刪除", () => {
+  assert.strictEqual(JSON.stringify(ctx.GRG_RULES.SUB_NICKS), '["大雄","蜜蜂","腳踏車"]');
+  sheets["名單"].getRange(8, 1, 1, 2).setValues([["蜜蜂", "0983407283"]]);
+  const me = { nickname: "蜜蜂", phone: "0983407283" };
+  assert.deepStrictEqual(post({ action: "score.login", ...me }).roles, []);
+  const r = post({ action: "score.put", ...me, items: [
+    { key: "sumo:EA:1:3", payload: { r: ["R", "R", "B"] } },      // 上午場地 1
+    { key: "sumo:R:1:4", payload: { r: ["B", "B", "B"] } },       // 下午遙控
+    { key: "line:L02:2", payload: { t: [26, 51], done: false } }, // 循跡
+    { key: "mr:M02:2", payload: { c: { W: 1 }, time: 60 } },      // MR
+    { key: "draw:J08", payload: { team: "J04" } },                // 抽籤：不行
+    { key: "sumo:EA:1:4", payload: null },                        // 刪除：不行
+  ] });
+  assert.deepStrictEqual(r.results.map((x) => x.ok), [true, true, true, true, false, false]);
+  assert.strictEqual(r.state["sumo:EA:1:3"].by, "蜜蜂");
+});
+
 ok("#10 恢復（2F 門口＋報到支援，主辦指定）；setup 把舊「場地7」認領搬到 #15（#15 已有人就不搬）", () => {
   const d = ctx.decide_({ action: "claim", nickname: "甲", phone: "0911222333", roleId: 10 }, { staff: { 甲: "0911222333" }, claims: {}, arrange: [], fails: 0 }, new Date("2026-10-11T12:00:00+08:00"));
   assert.ok(!d.ok && d.message.includes("主辦單位指定"), d.message);
