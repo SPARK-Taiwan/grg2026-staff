@@ -22,6 +22,8 @@ function makeSheet(name) {
       return rg;
     },
     clearContents: () => { data.length = 0; },
+    getLastColumn: () => Math.max(1, ...data.map((r) => (r || []).length)),
+    copyTo: () => ({ setName: (n) => { sheets[n] = makeSheet(n); data.forEach((r) => sheets[n].data.push((r || []).slice())); return sheets[n]; } }),
   };
   return sh;
 }
@@ -36,6 +38,7 @@ const ctx = {
   PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = v; } }) },
   ContentService: { createTextOutput: (t) => ({ text: t, setMimeType() { return this; } }), MimeType: { JSON: "json" } },
   Logger: { log: (m) => { ctx.lastLog = m; } },
+  Utilities: { formatDate: () => "1025_0600" },
   console,
 };
 vm.createContext(ctx);
@@ -280,6 +283,25 @@ ok("#10 恢復（2F 門口＋報到支援，主辦指定）；setup 把舊「場
   ctx.FIXED[15] = fixed15;
   ctx.setup();
   assert.strictEqual(nickAt(15), "輔大_魚魚");   // 主辦指定蓋過舊認領
+});
+
+ok("賽前清除 score.reset：只限計分台、只在期限前；決賽只留場地、其餘成績與紀錄清空、先備份", () => {
+  clearCache();
+  post({ action: "score.put", admin: PW(), items: [{ key: "final:E:SF1", payload: { field: "am:5", red: "EA01", blue: "EB02", rounds: ["R"] } }, { key: "draw:EA03", payload: { team: "E03" } }] });
+  clearCache();
+  const before = Object.keys(JSON.parse(ctx.doGet({ parameter: { score: "1" } }).text).state).length;
+  assert.ok(before >= 3, "before=" + before);
+  assert.ok(!post({ action: "score.reset", nickname: "蜜蜂", phone: "0983407283" }).ok);   // 裁判不行
+  const r = post({ action: "score.reset", admin: PW() });
+  assert.ok(r.ok, r.message);
+  clearCache();
+  const st = JSON.parse(ctx.doGet({ parameter: { score: "1" } }).text).state;
+  assert.deepStrictEqual(Object.keys(st), ["final:E:SF1"]);
+  assert.deepStrictEqual(st["final:E:SF1"].payload, { field: "am:5" });
+  assert.strictEqual(sheets["計分紀錄"].getLastRow(), 1);
+  assert.ok(sheets["清除前備份_1025_0600"].getLastRow() >= before);
+  ctx.SCORE_RESET_UNTIL = new Date("2026-01-01T00:00:00+08:00");
+  assert.ok(post({ action: "score.reset", admin: PW() }).message.includes("已過"));   // 過了期限就不能清
 });
 
 console.log(`\n全部通過：${n} 項`);

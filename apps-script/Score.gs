@@ -490,6 +490,38 @@ function scoreLog_(who, items, results) {
   rows.forEach(function (r) { sh.appendRow(r); });   // appendRow 多人同時寫也不會互相蓋掉
 }
 
+// 10/24 賽前清除（score.reset）：只限計分台密碼、只在 SCORE_RESET_UNTIL 之前可用（開賽後密碼外流也清不掉成績）。
+// 清除前把「計分資料」整份複製成「清除前備份_MMdd_HHmm」分頁；決賽只留場地設定（field），其餘成績、抽籤全部清掉；「計分紀錄」清空
+var SCORE_RESET_UNTIL = new Date('2026-10-25T07:30:00+08:00');
+function scoreReset_() {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(28000)) return { ok: false, message: '系統忙碌，請稍後再試' };
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet(), data = scoreDataSheet_(), log = scoreLogSheet_();
+    var backup = '清除前備份_' + Utilities.formatDate(new Date(), 'Asia/Taipei', 'MMdd_HHmm');
+    data.copyTo(ss).setName(backup);
+    var keep = [], removed = 0, n = data.getLastRow();
+    if (n >= 2) {
+      data.getRange(2, 1, n - 1, 6).getValues().forEach(function (r) {
+        var key = String(r[0]);
+        if (!key) return;
+        var p = null;
+        try { p = JSON.parse(r[2]); } catch (e) {}
+        if (/^final:/.test(key) && p && p.field) keep.push([key, String(r[1]), JSON.stringify({ field: p.field }), String(r[3]), String(r[4]), r[5] instanceof Date ? r[5].toISOString() : String(r[5])]);
+        else removed++;
+      });
+      data.getRange(2, 1, n - 1, 6).clearContent();
+      if (keep.length) data.getRange(2, 1, keep.length, 6).setNumberFormat('@').setValues(keep);
+    }
+    var m = log.getLastRow();
+    if (m >= 2) log.getRange(2, 1, m - 1, Math.max(log.getLastColumn(), 5)).clearContent();
+    CacheService.getScriptCache().remove(SCORE_CACHE);
+    return { ok: true, removed: removed, kept: keep.length, logRows: Math.max(0, m - 1), backup: backup, message: '已清除 ' + removed + ' 筆成績、' + Math.max(0, m - 1) + ' 筆紀錄，保留決賽場地 ' + keep.length + ' 筆（備份分頁：' + backup + '）' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function scoreResponse_(state) {
   return { ok: true, now: new Date().toISOString(), state: state, claims: readClaims_(), nicknames: readStaff_().order };
 }
@@ -542,6 +574,11 @@ function scorePost_(req) {
     if (!who.admin) return json_({ ok: false, message: '只有計分台可以解除鎖定' });
     cache.remove('sfail_' + String(req.nickname || '').trim());
     return json_({ ok: true, message: '已解除 ' + req.nickname + ' 的鎖定' });
+  }
+  if (req.action === 'score.reset') {                    // 賽前清除（見 scoreReset_）
+    if (!who.admin) return json_({ ok: false, message: '只有計分台可以清除' });
+    if (new Date() > SCORE_RESET_UNTIL) return json_({ ok: false, message: '已過賽前清除時間，不能再清除' });
+    return json_(scoreReset_());
   }
   if (req.action !== 'score.put') return json_({ ok: false, message: '未知的動作' });
 
