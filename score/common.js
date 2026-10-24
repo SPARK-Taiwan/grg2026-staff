@@ -230,12 +230,12 @@ window.GRG_UI = (function () {
 
   // ====================== 裁判：一步一步輸入＋雙方確認 ======================
   // 每一場三個步驟：① 叫號（倒數 1 分鐘，選手到了按「到了」；逾時每 30 秒自動判對手 1 回合）
-  //                 ② 比賽（30 秒回合倒數、時間到嗶聲；點結果後直接開始下一回合，回合間不休息）  ③ 雙方選手確認
+  //                 ② 比賽（30 秒回合倒數、時間到嗶聲；點結果後自動休息 1 分鐘）  ③ 雙方選手確認
   // JD[key] = { r:[回合], cf:{R,B}, tu:展開時間到, call:叫號開始時間, arr:{R,B}, go:開始比賽, pen:已判逾時回合數,
-  //             rs:回合開始時間, rsDone:這回合已提示時間到 }
+  //             rs:回合開始時間, rsDone:這回合已提示時間到, rest:休息開始時間, restDone }
   const JD = {};
   const J = { focus: null, showAll: false };
-  const CALL_SEC = 60, LATE_SEC = 30, ROUND_SEC = 30;
+  const CALL_SEC = 60, LATE_SEC = 30, ROUND_SEC = 30, REST_SEC = 60;
   const JSHORT = { R: "紅得分", B: "藍得分", TR: "紅較輕", TB: "藍較輕", T0: "一樣重", XR: "紅（對手逾時）", XB: "藍（對手逾時）" };
   const jcls = (v) => ({ R: "r", TR: "r", XR: "r", B: "b", TB: "b", XB: "b" }[v] || "g");
   const isRed = (v) => v === "R" || v === "XR";
@@ -286,6 +286,12 @@ window.GRG_UI = (function () {
     if (el < ROUND_SEC) return { cls: "", txt: "比賽中　剩 " + mmss(ROUND_SEC - el) };
     return { cls: "late", txt: isFinal ? "時間到！雙方都沒落敗 → 本戰重賽" : "時間到！雙方都還在場上 → 比重量" };
   }
+  function restText(d) {
+    const el = (now() - d.rest) / 1000;
+    // 10/24 規則常見問題：每回合之間 1 分鐘（上限）；雙方準備好就可以直接按開始，不用等滿
+    if (el < REST_SEC) return { cls: "", txt: "回合間調整　最多 1 分鐘，剩 " + mmss(REST_SEC - el) + "（準備好可直接開始）" };
+    return { cls: "late", txt: "1 分鐘到，請開始下一回合" };
+  }
 
   // 進行中／修改中的那一場（預賽 3 回合全打；決賽三戰兩勝）
   function nowCard(st, key, red, blue, title, sub, isFinal, editing) {
@@ -323,6 +329,7 @@ window.GRG_UI = (function () {
       }).join("") + "</div>";
       if (d.rs) { const t = roundText(d, isFinal); h += '<div class="bigtimer ' + t.cls + '" data-tick="round" data-key="' + key + '">' + t.txt + "</div>"; }
       else {
+        if (d.rest) { const t = restText(d); h += '<div class="resttimer ' + t.cls + '" data-tick="rest" data-key="' + key + '">' + t.txt + "</div>"; }
         h += '<button type="button" class="go huge" data-act="js-round">▶ 開始' + (isFinal ? "第 " + i + " 戰" : "第 " + i + " 回合") + "（30 秒）</button>";
       }
       h += '<p class="ask">' + (isFinal ? "第 " + i + " 戰：誰贏？" : "第 " + i + " 回合：誰得分？") + '</p><div class="pick">' +
@@ -406,7 +413,7 @@ window.GRG_UI = (function () {
     else if (act === "js-pick") {
       d.r.push(b.dataset.v); d.tu = false; d.cf = {}; d.rs = null;
       d.go = true;
-      d.rest = null;   // 10/24 回合之間不休息（公告沒有回合間休息），點完結果直接開始下一回合
+      if (!isComplete(d, isFinal)) { d.rest = now(); d.restDone = false; } else d.rest = null;
     }
     else if (act === "js-tu") d.tu = !d.tu;
     else if (act === "js-redo") { d.r = d.r.slice(0, Number(b.dataset.i)); d.cf = {}; d.tu = false; d.go = true; }
@@ -452,12 +459,13 @@ window.GRG_UI = (function () {
         }
       }
       if (d.rs && !d.rsDone && (now() - d.rs) / 1000 >= ROUND_SEC) { d.rsDone = true; if (!isFinal) d.tu = true; changed = true; beep(3); }
+      if (d.rest && !d.restDone && (now() - d.rest) / 1000 >= REST_SEC) { d.restDone = true; beep(1); }
     });
     if (changed) { saveJD(); if (lastCtx) lastCtx.render(); return; }
     document.querySelectorAll("[data-tick]").forEach((el) => {
       const d = JD[el.dataset.key]; if (!d) return;
       const isFinal = el.dataset.key.startsWith("final:");
-      const t = el.dataset.tick === "call" && d.call ? callText(d) : el.dataset.tick === "round" && d.rs ? roundText(d, isFinal) : null;
+      const t = el.dataset.tick === "call" && d.call ? callText(d) : el.dataset.tick === "round" && d.rs ? roundText(d, isFinal) : el.dataset.tick === "rest" && d.rest ? restText(d) : null;
       if (t) { el.textContent = t.txt; el.classList.toggle("late", t.cls === "late"); }
     });
   }, 250);
