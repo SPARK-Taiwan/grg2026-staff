@@ -45,7 +45,7 @@ let n = 0;
 const ok = (name, fn) => { fn(); n++; console.log("✓", name); };
 // 10/13 18 個崗位全部主辦指定（#10 恢復成「2F 門口＋報到支援」）；以下測試沿用「抽籤三＝#03、裁判七＝#07、裁判十一＝#11」，所以測試環境把這三格讓出來
 assert.strictEqual(Object.keys(ctx.FIXED).length, 18); assert.strictEqual(Object.keys(ctx.CANCELLED).length, 0);
-assert.strictEqual(ctx.FIXED[6], "臺師_阿帕頓諾迪"); assert.strictEqual(ctx.FIXED[8], "長庚_鴻比"); assert.strictEqual(ctx.FIXED[10], "北醫_Kang Lun");
+assert.strictEqual(ctx.FIXED[6], "臺師_阿帕頓諾迪"); assert.strictEqual(ctx.FIXED[8], "宜大_ian"); assert.strictEqual(ctx.FIXED[10], "北醫_Kang Lun");
 assert.strictEqual(ctx.FIXED[14], "元智_LouLou"); assert.strictEqual(ctx.FIXED[15], "輔大_魚魚"); assert.strictEqual(ctx.FIXED[16], "輔大_PEIPEI");
 assert.strictEqual(ctx.FIXED[17], "中原_呵呵"); assert.strictEqual(ctx.FIXED[18], "中原_郁郁");
 delete ctx.FIXED[3]; delete ctx.FIXED[7]; delete ctx.FIXED[11];
