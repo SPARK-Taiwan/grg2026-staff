@@ -291,6 +291,7 @@ ok("賽前清除 score.reset：只限計分台、只在期限前；決賽只留�
   clearCache();
   const before = Object.keys(JSON.parse(ctx.doGet({ parameter: { score: "1" } }).text).state).length;
   assert.ok(before >= 3, "before=" + before);
+  ctx.SCORE_RESET_UNTIL = new Date(Date.now() + 3600e3);   // 測試不受現在幾點影響（正式期限 10/25 07:30 已過）
   assert.ok(!post({ action: "score.reset", nickname: "蜜蜂", phone: "0983407283" }).ok);   // 裁判不行
   const r = post({ action: "score.reset", admin: PW() });
   assert.ok(r.ok, r.message);
