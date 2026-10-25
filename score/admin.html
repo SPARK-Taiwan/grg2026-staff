@@ -135,7 +135,13 @@
 
   function lineView(st) {
     const set = (st["lineset"] || {}).payload || {};
-    return '<h2>現場抽籤設定</h2><div class="card"><div class="grid2" style="gap:8px"><label class="lbl inline">圈數（2–5）<select id="laps"><option value="">—</option>' +
+    // 10/25 循跡抽題器：圈數 2–5、每圈 10–30 秒（整數）隨機抽，確認後存成 lineset，裁判手機與即時成績頁自動同步
+    const cur = set.laps && set.sec ? '<p class="target" style="font-size:22px">目前題目：<b>' + set.laps + " 圈 × " + set.sec + " 秒 ＝ 目標 " + UI.f2(set.laps * set.sec) + " 秒</b></p>"
+      : '<p class="target warn" style="font-size:20px">還沒抽題（裁判手機會顯示「計分台尚未設定圈數與秒數」）</p>';
+    return '<h2>循跡抽題（現場抽籤）</h2><div class="card">' + cur +
+      '<div class="foot" style="justify-content:flex-start"><button type="button" id="lineDraw" class="big">🎲 抽題（2–5 圈、每圈 10–30 秒）</button></div>' +
+      '<p class="note">抽完會先問你確認；按「確定」就公布並同步到裁判手機與即時成績頁（約 15–25 秒內）。比賽開始後不要再重抽。</p></div>' +
+      '<h2>手動設定</h2><div class="card"><div class="grid2" style="gap:8px"><label class="lbl inline">圈數（2–5）<select id="laps"><option value="">—</option>' +
       [2, 3, 4, 5].map((n) => "<option" + (set.laps === n ? " selected" : "") + ">" + n + "</option>").join("") + '</select></label><label class="lbl inline">每圈秒數（10–30）<input id="sec" type="number" min="10" max="30" step="1" value="' + (set.sec || "") + '"></label></div>' +
       '<div class="foot"><button type="button" id="lineSet">儲存設定</button></div></div>' +
       "<h2>輸入／修改成績</h2>" + UI.lineEditorHTML(st) + "<h2>目前排名</h2>" + UI.lineHTML(st, { admin: true });
@@ -224,6 +230,14 @@
       const p = Object.assign({}, (st[key] || {}).payload);
       ["field", "red", "blue"].forEach((n) => { if (get(n)) p[n] = get(n); else delete p[n]; });
       saveAndRender([{ key, payload: Object.keys(p).length ? p : null }]);
+    } else if (b.id === "lineDraw") {
+      const rnd = (lo, hi) => { const a = new Uint32Array(1); crypto.getRandomValues(a); return lo + (a[0] % (hi - lo + 1)); };
+      const laps = rnd(2, 5), sec = rnd(10, 30);
+      const ran = Object.keys(st).some((k) => k.startsWith("line:"));
+      const old = (st["lineset"] || {}).payload;
+      const msg = "抽到：" + laps + " 圈 × " + sec + " 秒 ＝ 目標 " + laps * sec + " 秒\n\n確定公布並同步到裁判手機？" +
+        (old ? "\n（會取代目前的 " + old.laps + " 圈 × " + old.sec + " 秒）" : "") + (ran ? "\n\n⚠ 已經有循跡成績了，換題目會讓已比的成績改用新目標計算！" : "");
+      if (confirm(msg)) saveAndRender([{ key: "lineset", payload: { laps, sec } }]);
     } else if (b.id === "lineSet") {
       const laps = Number($("laps").value), sec = Number($("sec").value);
       saveAndRender([{ key: "lineset", payload: { laps, sec } }]);
