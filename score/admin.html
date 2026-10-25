@@ -170,14 +170,25 @@
     if (lmiss) warn.push("循跡有 " + lmiss + " 隊沒有成績");
     const mmiss = D.teams.M.filter((t) => !st["mr:" + t.id + ":1"] && !st["mr:" + t.id + ":2"]).length;
     if (mmiss) warn.push("MR 有 " + mmiss + " 隊沒有成績");
-    const list = [].concat(R.sumoAwards(D, st, "E"), R.sumoAwards(D, st, "J"), R.sumoAwards(D, st, "R"), R.lineAwards(D, st), R.mrAwards(D, st));
+    // 10/25 相撲總名次（冠軍、亞軍、季軍 2 隊）一直列出來：決賽還沒打完先顯示「待…」，對戰隊伍確定後寫出來
+    const FAMS = { E: "相撲自動組 國小組", J: "相撲自動組 國高中組", R: "相撲遙控組" };
+    const nm = (code) => { const t = code && R.teamOfCode(D, st, code); return t ? t.name : code || "？"; };
+    const vs = (x, F) => (x.red && x.blue ? "（" + nm(x.red) + " vs " + nm(x.blue) + "）" : F.prelimDone ? "（待準決賽結果）" : "（晉級隊伍待預賽結束）");
+    const sumo = [].concat(...["E", "J", "R"].map((f) => {
+      const F = R.finals(D, st, f), cat = FAMS[f] + "｜總名次";
+      const slot = (title, code, wait) => (code ? { cat, title, code, team: R.teamOfCode(D, st, code) } : { cat, title, wait });
+      return [slot("冠軍", F.champion, "待冠亞軍戰" + vs(F.F, F)), slot("亞軍", F.runnerUp, "待冠亞軍戰" + vs(F.F, F)),
+              slot("季軍", F.SF1.loser, "待準決賽 ①" + vs(F.SF1, F)), slot("季軍", F.SF2.loser, "待準決賽 ②" + vs(F.SF2, F))]
+        .concat(R.sumoAwards(D, st, f).filter((a) => a.cat !== cat));
+    }));
+    const list = [].concat(sumo, R.lineAwards(D, st), R.mrAwards(D, st));
     const cats = [];
     list.forEach((a) => { let c = cats.find((x) => x.cat === a.cat); if (!c) cats.push(c = { cat: a.cat, items: [] }); c.items.push(a); });
     return '<div class="foot noprint" style="justify-content:flex-start"><button type="button" onclick="window.print()">列印頒獎名單</button></div>' +
       (warn.length ? '<div class="banner">尚未完成：' + warn.map(esc).join("、") + "</div>" : '<div class="banner" style="background:var(--okbg);color:var(--ok)">全部完成</div>') +
       '<p class="note">唱名時只念組別、獎項與隊名。</p>' +
       cats.map((c) => '<div class="award-cat"><h2>' + esc(c.cat) + '</h2><table class="tbl"><thead><tr><th style="width:90px">獎項</th><th>隊伍</th><th>學校／單位</th></tr></thead><tbody>' +
-        c.items.map((a) => "<tr><td><b>" + esc(a.title) + "</b></td><td>" + (a.team ? esc(a.team.name) : '<span class="mute">' + esc(a.code || "") + "（未登錄）</span>") + "</td><td class='mute'>" + (a.team ? esc(a.team.unit) : "") + "</td></tr>").join("") +
+        c.items.map((a) => "<tr><td><b>" + esc(a.title) + "</b></td><td>" + (a.team ? esc(a.team.name) : a.wait ? '<span class="mute">' + esc(a.wait) + "</span>" : '<span class="mute">' + esc(a.code || "") + "（未登錄）</span>") + "</td><td class='mute'>" + (a.team ? esc(a.team.unit) : "") + "</td></tr>").join("") +
         "</tbody></table></div>").join("");
   }
 
