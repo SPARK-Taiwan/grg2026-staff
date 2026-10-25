@@ -106,24 +106,24 @@
     const byPts = {};
     g.codes.forEach((c) => { (byPts[row[c].pts] = byPts[row[c].pts] || []).push(c); });
     const order = [];
-    Object.keys(byPts).map(Number).sort((a, b) => b - a).forEach((pts) => {
-      const tied = byPts[pts];
+    // 10/25 三隊同分、比完對戰還剩兩隊平手時，這兩隊要再比彼此的對戰得分，分不出來才秤重
+    function breakTie(tied, top) {
       if (tied.length === 1) { order.push(tied); return; }
-      const set = new Set(tied);
-      tied.forEach((c) => { row[c].h2h = 0; });
-      results.forEach((x) => { if (set.has(x.red) && set.has(x.blue)) { row[x.red].h2h += x.p.red; row[x.blue].h2h += x.p.blue; } });
+      const set = new Set(tied), h = {};
+      tied.forEach((c) => { h[c] = 0; });
+      results.forEach((x) => { if (set.has(x.red) && set.has(x.blue)) { h[x.red] += x.p.red; h[x.blue] += x.p.blue; } });
+      if (top) tied.forEach((c) => { row[c].h2h = h[c]; });
       const byH = {};
-      tied.forEach((c) => { (byH[row[c].h2h] = byH[row[c].h2h] || []).push(c); });
-      Object.keys(byH).map(Number).sort((a, b) => b - a).forEach((h) => {
-        const t2 = byH[h];
-        if (t2.length === 1) { order.push(t2); return; }
-        const allW = t2.every((c) => row[c].weight != null);
-        if (!allW) { order.push(t2); return; }
-        const byW = {};
-        t2.forEach((c) => { (byW[row[c].weight] = byW[row[c].weight] || []).push(c); });
-        Object.keys(byW).map(Number).sort((a, b) => a - b).forEach((w) => order.push(byW[w]));
-      });
-    });
+      tied.forEach((c) => { (byH[h[c]] = byH[h[c]] || []).push(c); });
+      const keys = Object.keys(byH).map(Number).sort((a, b) => b - a);
+      if (keys.length > 1) { keys.forEach((k) => breakTie(byH[k], false)); return; }
+      const allW = tied.every((c) => row[c].weight != null);
+      if (!allW) { order.push(tied); return; }
+      const byW = {};
+      tied.forEach((c) => { (byW[row[c].weight] = byW[row[c].weight] || []).push(c); });
+      Object.keys(byW).map(Number).sort((a, b) => a - b).forEach((w) => order.push(byW[w]));
+    }
+    Object.keys(byPts).map(Number).sort((a, b) => b - a).forEach((pts) => breakTie(byPts[pts], true));
     const out = [];
     let pos = 1;
     order.forEach((bucket) => {

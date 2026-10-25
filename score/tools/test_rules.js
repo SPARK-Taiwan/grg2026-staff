@@ -59,6 +59,14 @@ ok("同分 → 比對戰得分", () => {
   assert.ok(s2.rows.slice(0, 3).every((r) => !r.tie));
 });
 
+ok("三隊同分、比完對戰仍有兩隊平手 → 這兩隊再比直接對戰（10/25 A 組實況）", () => {
+  // EA06、EA07、EA10 都 12 分；三隊間對戰得分 EA06 4、EA10 4、EA07 1；EA06 直接對戰 2:1 勝 EA10 → 不用秤重
+  const st = JSON.parse(fs.readFileSync(path.join(__dirname, "fixture_EA_20261025.json"), "utf8"));
+  const s = R.groupStandings(D, st, "EA");
+  assert.deepStrictEqual(s.rows.slice(4, 7).map((r) => [r.code, r.pts, r.rank, r.tie]), [["EA06", 12, 5, false], ["EA10", 12, 6, false], ["EA07", 12, 7, false]]);
+  assert.deepStrictEqual(R.tiesNeedingWeight(D, st, "EA"), []);
+});
+
 ok("兩隊同分時對戰勝者在前", () => {
   const st = {}; drawAll(st);
   // 讓 EA02 贏 EA01、其他照代號；EA01 24、EA02 24（EA02 輸 0 場? EA02 贏 EA01 且贏 EA03..10 → 27）→ 改：EA02 輸 EA03
